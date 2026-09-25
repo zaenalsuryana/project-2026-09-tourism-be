@@ -1,0 +1,13 @@
+# Dependencies
+node_modules
+jspm_packages
+
+# Production build
+dist
+build
+
+# Environment variables
+.env
+
+# Database migrations / generated client
+/src/generated/prisma
