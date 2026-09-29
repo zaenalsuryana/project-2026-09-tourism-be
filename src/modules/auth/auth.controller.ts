@@ -7,9 +7,11 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetCurrentUser } from '../../common/decorators/get-current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 // Import menggunakan custom output Prisma
-import { UserRole } from '../../generated/prisma/client';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -55,5 +57,18 @@ export class AuthController {
       message: 'Selamat datang, Super Admin! Anda memiliki akses tingkat tinggi.',
       user,
     };
+  }
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Kirim link reset password ke email' })
+  @ApiResponse({ status: 200, description: 'Link reset password berhasil dikirim' })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Eksekusi reset password menggunakan token' })
+  @ApiResponse({ status: 200, description: 'Password berhasil diubah' })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 }
