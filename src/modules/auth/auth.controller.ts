@@ -5,6 +5,11 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetCurrentUser } from '../../common/decorators/get-current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+
+// Import menggunakan custom output Prisma
+import { UserRole } from '../../generated/prisma/client';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -34,6 +39,20 @@ export class AuthController {
   getProfile(@GetCurrentUser() user: any) {
     return {
       message: 'Berhasil mengakses data dengan token JWT',
+      user,
+    };
+  }
+
+  @Get('admin-only')
+  @UseGuards(JwtAuthGuard, RolesGuard) 
+  @Roles(UserRole.SUPER_ADMIN)         
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Tes akses khusus Super Admin' })
+  @ApiResponse({ status: 200, description: 'Berhasil diakses oleh Super Admin' })
+  @ApiResponse({ status: 403, description: 'Forbidden / Akses ditolak' })
+  testAdminAccess(@GetCurrentUser() user: any) {
+    return {
+      message: 'Selamat datang, Super Admin! Anda memiliki akses tingkat tinggi.',
       user,
     };
   }
