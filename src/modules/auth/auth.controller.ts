@@ -1,14 +1,15 @@
-import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { GetCurrentUser } from '../../common/decorators/get-current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 
 // Import menggunakan custom output Prisma
 import { UserRole } from '@prisma/client';
@@ -30,6 +31,34 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login berhasil, mengembalikan token' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Login menggunakan akun Google' })
+  async googleAuth(@Req() req) {
+    // Dipicu otomatis oleh GoogleAuthGuard
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Callback redirect dari Google setelah login' })
+  async googleAuthRedirect(@Req() req) {
+    return this.authService.validateGoogleUser(req.user);
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Kirim link reset password ke email' })
+  @ApiResponse({ status: 200, description: 'Link reset password berhasil dikirim' })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Eksekusi reset password menggunakan token' })
+  @ApiResponse({ status: 200, description: 'Password berhasil diubah' })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 
   @Get('profile')
@@ -57,18 +86,5 @@ export class AuthController {
       message: 'Selamat datang, Super Admin! Anda memiliki akses tingkat tinggi.',
       user,
     };
-  }
-  @Post('forgot-password')
-  @ApiOperation({ summary: 'Kirim link reset password ke email' })
-  @ApiResponse({ status: 200, description: 'Link reset password berhasil dikirim' })
-  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(forgotPasswordDto);
-  }
-
-  @Post('reset-password')
-  @ApiOperation({ summary: 'Eksekusi reset password menggunakan token' })
-  @ApiResponse({ status: 200, description: 'Password berhasil diubah' })
-  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
-    return this.authService.resetPassword(resetPasswordDto);
   }
 }

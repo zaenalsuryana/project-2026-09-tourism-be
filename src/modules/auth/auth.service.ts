@@ -13,7 +13,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-    private readonly mailerService: MailerService, // Inject MailerService di sini
+    private readonly mailerService: MailerService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -38,11 +38,17 @@ export class AuthService {
       },
     });
 
-    delete (user as any).passwordHash;
+    const sanitizedUser = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      avatar: user.avatarUrl,
+    };
 
     return {
       message: 'Registrasi berhasil',
-      data: user,
+      data: sanitizedUser,
     };
   }
 
@@ -63,24 +69,30 @@ export class AuthService {
       throw new UnauthorizedException('Email atau password salah.');
     }
 
+    // Catatan: Payload token bisa tetap dibuat jika nantinya mau diset ke Cookie di Controller
     const payload = {
       userId: user.id,
       email: user.email,
       role: user.role,
     };
-
     const accessToken = this.jwtService.sign(payload);
+    // (Opsional nanti di Controller, accessToken ini bisa dimasukkan ke Response Cookie)
 
-    delete (user as any).passwordHash;
+    const sanitizedUser = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      avatar: user.avatarUrl,
+    };
 
     return {
       message: 'Login berhasil',
-      accessToken,
-      data: user,
+      data: sanitizedUser,
     };
   }
 
-  // --- Metode Baru 1: Mengirimkan Link Reset ---
+  // --- Metode 1: Mengirimkan Link Reset ---
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: forgotPasswordDto.email },
@@ -90,7 +102,6 @@ export class AuthService {
       throw new NotFoundException('Pengguna dengan email tersebut tidak ditemukan.');
     }
 
-    // Buat token khusus reset yang hanya berlaku 15 menit
     const resetToken = this.jwtService.sign(
       { userId: user.id, action: 'reset-password' },
       { expiresIn: '15m' } 
@@ -112,7 +123,7 @@ export class AuthService {
     return { message: 'Link reset password telah dikirim ke email Anda.' };
   }
 
-  // --- Metode Baru 2: Mengeksekusi Pembaruan Password ---
+  // --- Metode 2: Mengeksekusi Pembaruan Password ---
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
     try {
       const payload = this.jwtService.verify(resetPasswordDto.token);
@@ -133,5 +144,36 @@ export class AuthService {
     } catch (error) {
       throw new BadRequestException('Token tidak valid atau sudah kedaluwarsa.');
     }
+  }
+
+  // --- Metode Google Login / Register ---
+  async validateGoogleUser(googleUser: { email: string; fullName: string; avatar?: string }) {
+    let user = await this.prisma.user.findUnique({
+      where: { email: googleUser.email },
+    });
+
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          email: googleUser.email,
+          fullName: googleUser.fullName,
+          avatarUrl: googleUser.avatar,
+          role: 'TOURIST',
+        },
+      });
+    }
+
+    const sanitizedUser = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      avatar: user.avatarUrl,
+    };
+
+    return {
+      message: 'Login dengan Google berhasil',
+      data: sanitizedUser,
+    };
   }
 }
