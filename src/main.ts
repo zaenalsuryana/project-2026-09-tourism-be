@@ -2,28 +2,30 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import cookieParser = require('cookie-parser');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Mengatur semua endpoint agar diawali dengan /api
   app.setGlobalPrefix('api');
-
-  // Mengaktifkan validasi input otomatis
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.use(cookieParser());
 
-  // Konfigurasi dokumentasi Swagger UI
+  // Konfigurasi Swagger menggunakan Bearer Auth standar (lebih mudah untuk testing)
   const config = new DocumentBuilder()
     .setTitle('Tourism API')
     .setDescription('Dokumentasi API untuk Aplikasi Pariwisata')
     .setVersion('1.0')
-    .addBearerAuth()
+    .addBearerAuth() // <-- Menggunakan addBearerAuth standar
     .build();
   
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 
-  // Otomatis menggunakan port 3000 jika belum ada file .env
   const port = process.env.PORT || 3000;
   await app.listen(port);
   

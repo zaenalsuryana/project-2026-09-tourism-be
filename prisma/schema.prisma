@@ -113,3 +113,14 @@ model RefreshToken {
   @@index([familyId])
   @@map("refresh_tokens")
 }
+
+// ===== Destinasi =====
+model Category {
+  id           Int           @id @default(autoincrement()) @db.SmallInt
+  name         String        @unique @db.VarChar(60)
+  slug         String        @unique @db.VarChar(80)
+  
+  // destinations Destination[] // Nanti di-uncomment saat model Destination sudah ditambahkan ke schema
+
+  @@map("categories")
+}
