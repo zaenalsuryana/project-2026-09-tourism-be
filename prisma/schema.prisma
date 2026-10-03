@@ -57,6 +57,9 @@ model User {
   identities       UserIdentity[]
   authTokens       AuthToken[]
   refreshTokens    RefreshToken[]
+  
+  // Perbaikan 1: Menambahkan relasi kebalikan dari model Destination
+  managedDestination Destination? 
 
   @@index([role, status])
   @@map("users")
@@ -120,7 +123,46 @@ model Category {
   name         String        @unique @db.VarChar(60)
   slug         String        @unique @db.VarChar(80)
   
-  // destinations Destination[] // Nanti di-uncomment saat model Destination sudah ditambahkan ke schema
+  // Perbaikan 2: Menghapus komentar agar relasi aktif
+  destinations Destination[] 
 
   @@map("categories")
+}
+
+enum DestinationStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  SUSPENDED
+}
+
+model Destination {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  managerId        String            @unique @map("manager_id") @db.Uuid
+  categoryId       Int               @map("category_id") @db.SmallInt
+  name             String            @db.VarChar(150)
+  slug             String            @unique @db.VarChar(170)
+  description      String
+  address          String
+  province         String            @db.VarChar(80)
+  city             String            @db.VarChar(80)
+  latitude         Decimal?          @db.Decimal(9, 6)
+  longitude        Decimal?          @db.Decimal(9, 6)
+  contactPhone     String?           @map("contact_phone") @db.VarChar(20)
+  contactEmail     String?           @map("contact_email") @db.VarChar(254)
+  facilities       String[]          @default([])
+  status           DestinationStatus @default(DRAFT)
+  isSalesOpen      Boolean           @default(true) @map("is_sales_open")
+  statusReason     String?           @map("status_reason")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  manager          User              @relation(fields: [managerId], references: [id])
+  category         Category          @relation(fields: [categoryId], references: [id])
+
+  @@index([status, province, city])
+  @@index([categoryId])
+  @@map("destinations")
 }
