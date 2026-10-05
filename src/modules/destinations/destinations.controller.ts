@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, Get, Param, ParseUUIDPipe } from '@nestjs/common'; // <-- 1. Tambahkan ParseUUIDPipe di sini
 import { DestinationsService } from './destinations.service';
 import { CreateDestinationDto } from './dto/create-destination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -34,7 +34,7 @@ export class DestinationsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Mendapatkan detail destinasi' })
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) { // <-- 2. Tambahkan ParseUUIDPipe di parameter ini
     return this.destinationsService.findOne(id);
   }
 }
