@@ -198,6 +198,16 @@ export class AuthService {
       throw new NotFoundException('Pengguna tidak ditemukan.');
     }
 
+    // 1. Buat payload JWT yang sama seperti saat login/register
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    };
+    
+    // 2. Generate ulang accessToken-nya
+    const accessToken = this.jwtService.sign(payload);
+
     const sanitizedUser = {
       id: user.id,
       email: user.email,
@@ -208,8 +218,10 @@ export class AuthService {
       updatedAt: user.updatedAt,
     };
 
+    // 3. Sertakan accessToken ke dalam return object
     return {
       message: 'Berhasil mengambil data profil lengkap',
+      accessToken, // <--- Ini yang membuat token muncul di response body profil
       data: sanitizedUser,
     };
   }
