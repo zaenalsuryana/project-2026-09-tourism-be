@@ -1,6 +1,6 @@
 // ===== Generator & datasource =====
 generator client {
-  provider     = "prisma-client-js"
+  provider      = "prisma-client-js"
 }
 
 datasource db {
@@ -36,44 +36,43 @@ enum TokenType {
 
 // ===== Auth & user =====
 model User {
-  id               String           @id @default(uuid(7)) @db.Uuid
-  email            String           @unique @db.VarChar(254)
-  passwordHash     String?          @map("password_hash")
-  fullName         String           @map("full_name") @db.VarChar(120)
-  phone            String?          @db.VarChar(20)
-  avatarUrl        String?          @map("avatar_url")
-  birthDate        DateTime?        @map("birth_date") @db.Date
-  city             String?          @db.VarChar(80)
-  role             UserRole         @default(TOURIST)
-  status           UserStatus       @default(ACTIVE)
-  emailVerifiedAt  DateTime?        @map("email_verified_at") @db.Timestamptz(6)
-  failedLoginCount Int              @default(0) @map("failed_login_count")
-  lockedUntil      DateTime?        @map("locked_until") @db.Timestamptz(6)
-  lastLoginAt      DateTime?        @map("last_login_at") @db.Timestamptz(6)
-  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  id              String       @id @default(uuid(7)) @db.Uuid
+  email           String       @unique @db.VarChar(254)
+  passwordHash    String?      @map("password_hash")
+  fullName        String       @map("full_name") @db.VarChar(120)
+  phone           String?      @db.VarChar(20)
+  avatarUrl       String?      @map("avatar_url")
+  birthDate       DateTime?    @map("birth_date") @db.Date
+  city            String?      @db.VarChar(80)
+  role            UserRole     @default(TOURIST)
+  status          UserStatus   @default(ACTIVE)
+  emailVerifiedAt DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  failedLoginCount Int         @default(0) @map("failed_login_count")
+  lockedUntil     DateTime?    @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt     DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz(6)
   
-  identities       UserIdentity[]
-  authTokens       AuthToken[]
-  refreshTokens    RefreshToken[]
-  
-  // Perbaikan 1: Menambahkan relasi kebalikan dari model Destination
-  managedDestination Destination? 
+  identities        UserIdentity[]
+  authTokens        AuthToken[]
+  refreshTokens     RefreshToken[]
+  managedDestination Destination?  
+  createdTicketTypes TicketType[] @relation("UserCreatedTickets") // Diperjelas relasinya
 
   @@index([role, status])
   @@map("users")
 }
 
 model UserIdentity {
-  id               String       @id @default(uuid(7)) @db.Uuid
-  userId           String       @map("user_id") @db.Uuid
-  provider         AuthProvider
-  providerUserId   String       @map("provider_user_id") @db.VarChar(191)
-  providerEmail    String?      @map("provider_email") @db.VarChar(254)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String       @id @default(uuid(7)) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  provider        AuthProvider
+  providerUserId  String       @map("provider_user_id") @db.VarChar(191)
+  providerEmail   String?      @map("provider_email") @db.VarChar(254)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
@@ -81,36 +80,36 @@ model UserIdentity {
 }
 
 model AuthToken {
-  id               String       @id @default(uuid(7)) @db.Uuid
-  userId           String       @map("user_id") @db.Uuid
-  type             TokenType
-  tokenHash        String       @unique @map("token_hash") @db.Char(64)
-  payload          Json?
-  expiresAt        DateTime     @map("expires_at") @db.Timestamptz(6)
-  usedAt           DateTime?    @map("used_at") @db.Timestamptz(6)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String       @id @default(uuid(7)) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  type            TokenType
+  tokenHash       String       @unique @map("token_hash") @db.Char(64)
+  payload         Json?
+  expiresAt       DateTime     @map("expires_at") @db.Timestamptz(6)
+  usedAt          DateTime?    @map("used_at") @db.Timestamptz(6)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
   @@map("auth_tokens")
 }
 
 model RefreshToken {
-  id               String       @id @default(uuid(7)) @db.Uuid
-  userId           String       @map("user_id") @db.Uuid
-  familyId         String       @map("family_id") @db.Uuid
-  tokenHash        String       @unique @map("token_hash") @db.Char(64)
-  userAgent        String?      @map("user_agent")
-  ipAddress        String?      @map("ip_address") @db.Inet
-  expiresAt        DateTime     @map("expires_at") @db.Timestamptz(6)
-  revokedAt        DateTime?    @map("revoked_at") @db.Timestamptz(6)
-  replacedById     String?      @unique @map("replaced_by_id") @db.Uuid
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  id              String       @id @default(uuid(7)) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  familyId        String       @map("family_id") @db.Uuid
+  tokenHash       String       @unique @map("token_hash") @db.Char(64)
+  userAgent       String?      @map("user_agent")
+  ipAddress       String?      @map("ip_address") @db.Inet
+  expiresAt       DateTime     @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime?    @map("revoked_at") @db.Timestamptz(6)
+  replacedById    String?      @unique @map("replaced_by_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy       RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
-  replaces         RefreshToken? @relation("TokenRotation")
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy      RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  replaces        RefreshToken? @relation("TokenRotation")
 
   @@index([userId])
   @@index([familyId])
@@ -119,12 +118,11 @@ model RefreshToken {
 
 // ===== Destinasi =====
 model Category {
-  id           Int           @id @default(autoincrement()) @db.SmallInt
-  name         String        @unique @db.VarChar(60)
-  slug         String        @unique @db.VarChar(80)
+  id            Int           @id @default(autoincrement()) @db.SmallInt
+  name          String        @unique @db.VarChar(60)
+  slug          String        @unique @db.VarChar(80)
   
-  // Perbaikan 2: Menghapus komentar agar relasi aktif
-  destinations Destination[] 
+  destinations Destination[]  
 
   @@map("categories")
 }
@@ -138,31 +136,58 @@ enum DestinationStatus {
 }
 
 model Destination {
-  id               String            @id @default(uuid(7)) @db.Uuid
-  managerId        String            @unique @map("manager_id") @db.Uuid
-  categoryId       Int               @map("category_id") @db.SmallInt
-  name             String            @db.VarChar(150)
-  slug             String            @unique @db.VarChar(170)
-  description      String
-  address          String
-  province         String            @db.VarChar(80)
-  city             String            @db.VarChar(80)
-  latitude         Decimal?          @db.Decimal(9, 6)
-  longitude        Decimal?          @db.Decimal(9, 6)
-  contactPhone     String?           @map("contact_phone") @db.VarChar(20)
-  contactEmail     String?           @map("contact_email") @db.VarChar(254)
-  facilities       String[]          @default([])
-  status           DestinationStatus @default(DRAFT)
-  isSalesOpen      Boolean           @default(true) @map("is_sales_open")
-  statusReason     String?           @map("status_reason")
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  id              String            @id @default(uuid(7)) @db.Uuid
+  managerId       String            @unique @map("manager_id") @db.Uuid
+  categoryId      Int               @map("category_id") @db.SmallInt
+  name            String            @db.VarChar(150)
+  slug            String            @unique @db.VarChar(170)
+  description     String
+  address         String
+  province        String            @db.VarChar(80)
+  city            String            @db.VarChar(80)
+  latitude        Decimal?          @db.Decimal(9, 6)
+  longitude       Decimal?          @db.Decimal(9, 6)
+  contactPhone    String?           @map("contact_phone") @db.VarChar(20)
+  contactEmail    String?           @map("contact_email") @db.VarChar(254)
+  facilities      String[]          @default([])
+  status          DestinationStatus @default(DRAFT)
+  isSalesOpen     Boolean           @default(true) @map("is_sales_open")
+  statusReason    String?           @map("status_reason")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?         @map("deleted_at") @db.Timestamptz(6)
 
-  manager          User              @relation(fields: [managerId], references: [id])
-  category         Category          @relation(fields: [categoryId], references: [id])
+  manager         User              @relation(fields: [managerId], references: [id])
+  category        Category          @relation(fields: [categoryId], references: [id])
+  ticketTypes     TicketType[]
 
   @@index([status, province, city])
   @@index([categoryId])
   @@map("destinations")
+}
+
+// ===== Tiket & inventori =====
+model TicketType {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  destinationId   String      @map("destination_id") @db.Uuid
+  name            String      @db.VarChar(100)
+  description     String?
+  price           Int         
+  dailyQuota      Int?        @map("daily_quota")
+  minPerOrder     Int         @default(1) @map("min_per_order") @db.SmallInt
+  maxPerOrder     Int         @default(10) @map("max_per_order") @db.SmallInt
+  salesStartAt    DateTime?   @map("sales_start_at") @db.Timestamptz(6)
+  salesEndAt      DateTime?   @map("sales_end_at") @db.Timestamptz(6)
+  isActive        Boolean     @default(true) @map("is_active")
+  sortOrder       Int         @default(0) @map("sort_order") @db.SmallInt
+  createdById     String?     @map("created_by_id") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  destination     Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  createdBy       User?       @relation("UserCreatedTickets", fields: [createdById], references: [id]) // Menyesuaikan nama relasi
+
+  @@index([destinationId])
+  @@map("ticket_types")
 }
