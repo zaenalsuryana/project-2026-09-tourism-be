@@ -1,10 +1,18 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { TicketInventoriesService } from './ticket-inventories.service';
 import { CreateTicketInventoryDto } from './dto/create-ticket-inventory.dto';
 import { UpdateTicketInventoryDto } from './dto/update-ticket-inventory.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+
+// Import sesuai dengan referensi struktur folder kamu
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; 
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Manager - Ticket Inventories')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('MANAGER', 'SUPER_ADMIN') 
 @Controller('manager/ticket-inventories')
 export class TicketInventoriesController {
   constructor(private readonly ticketInventoriesService: TicketInventoriesService) {}
@@ -17,8 +25,9 @@ export class TicketInventoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Mengambil semua data inventori tiket' })
-  findAll() {
-    return this.ticketInventoriesService.findAll();
+  @ApiQuery({ name: 'ticketTypeId', required: false, description: 'Filter berdasarkan ID Jenis Tiket' })
+  findAll(@Query('ticketTypeId') ticketTypeId?: string) {
+    return this.ticketInventoriesService.findAll(ticketTypeId);
   }
 
   @Get(':id')

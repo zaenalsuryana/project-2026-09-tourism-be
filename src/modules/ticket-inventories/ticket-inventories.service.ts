@@ -33,14 +33,23 @@ export class TicketInventoriesService {
     });
   }
 
-  async findAll() {
+  // findAll digabungkan: Bisa menampilkan semua, dan bisa difilter berdasarkan ticketTypeId
+  async findAll(ticketTypeId?: string) {
+    const whereClause = ticketTypeId ? { ticketTypeId } : {};
+
     return this.prisma.ticketInventory.findMany({
-      include: { 
-        ticketType: {
-          select: { name: true, price: true } 
-        } 
+      where: whereClause,
+      orderBy: { 
+        date: 'desc' // Urutkan dari tanggal terbaru (desc)
       },
-      orderBy: { date: 'desc' }, 
+      include: {
+        ticketType: {
+          select: {
+            name: true,
+            price: true,
+          },
+        },
+      },
     });
   }
 
@@ -58,7 +67,7 @@ export class TicketInventoriesService {
   }
 
   async update(id: string, updateTicketInventoryDto: UpdateTicketInventoryDto) {
-    await this.findOne(id); 
+    await this.findOne(id); // Pastikan data ada sebelum di-update
 
     const { date, ...restData } = updateTicketInventoryDto;
     const dataToUpdate: any = { ...restData };
@@ -81,7 +90,7 @@ export class TicketInventoriesService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    await this.findOne(id); // Pastikan data ada sebelum dihapus
     
     return this.prisma.ticketInventory.delete({
       where: { id },
