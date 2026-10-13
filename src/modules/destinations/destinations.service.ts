@@ -78,6 +78,71 @@ export class DestinationsService {
     return destination;
   }
 
+  // ====================================================================
+  // FITUR BARU: Mendapatkan ketersediaan tiket berdasarkan tanggal (Customer API)
+  // ====================================================================
+  async getAvailability(slug: string, dateString: string) {
+    // 1. Cari destinasi berdasarkan slug
+    const destination = await this.prisma.destination.findUnique({
+      where: { slug },
+      select: { id: true, isSalesOpen: true, status: true },
+    });
+
+    if (!destination) {
+      throw new NotFoundException('Destinasi tidak ditemukan');
+    }
+
+    // 2. Ambil semua jenis tiket yang aktif untuk destinasi ini
+    const ticketTypes = await this.prisma.ticketType.findMany({
+      where: {
+        destinationId: destination.id,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+      },
+    });
+
+    // 3. Ambil data inventori untuk tanggal yang diminta
+    const visitDate = new Date(dateString);
+    const inventories = await this.prisma.ticketInventory.findMany({
+      where: {
+        date: visitDate, // Menggunakan 'date' sesuai skema aslimu
+        ticketTypeId: { in: ticketTypes.map((t) => t.id) },
+      },
+    });
+
+    // 4. Gabungkan data tiket dengan data inventori untuk menghitung sisa kuota
+    const availability = ticketTypes.map((ticket) => {
+      // Cari apakah ada data inventori untuk tiket ini di tanggal tersebut
+      const inventory = inventories.find((inv) => inv.ticketTypeId === ticket.id);
+      
+      const sold = inventory?.sold || 0;
+      const quota = inventory?.quota || 0; // Mengambil quota dari tabel inventory
+
+      // Hitung sisa kuota (remaining)
+      const remaining = Math.max(quota - sold, 0); // Pastikan tidak minus
+
+      return {
+        ticketTypeId: ticket.id,
+        name: ticket.name,
+        price: ticket.price,
+        quota,
+        sold,
+        remaining, // Sisa tiket yang bisa dibeli
+      };
+    });
+
+    return {
+      destinationId: destination.id,
+      visitDate: dateString,
+      tickets: availability,
+    };
+  }
+  // ====================================================================
+
   async update(id: string, updateDestinationDto: UpdateDestinationDto) {
     return `This action updates a #${id} destination`;
   }
