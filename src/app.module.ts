@@ -7,6 +7,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { DestinationsModule } from './modules/destinations/destinations.module';
 import { TicketTypesModule } from './modules/ticket-types/ticket-types.module';
 import { TicketInventoriesModule } from './modules/ticket-inventories/ticket-inventories.module';
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { TicketInventoriesModule } from './modules/ticket-inventories/ticket-inv
     DestinationsModule,
     TicketTypesModule,
     TicketInventoriesModule,
+    OrdersModule,
   ],
 })
 export class AppModule {}

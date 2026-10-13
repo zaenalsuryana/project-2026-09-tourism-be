@@ -59,6 +59,7 @@ export class AuthController {
 
     return {
       message: result.message,
+      accessToken: result.accessToken,
       data: result.data,
     };
   }

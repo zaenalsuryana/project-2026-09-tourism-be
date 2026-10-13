@@ -209,3 +209,38 @@ model TicketInventory {
   @@unique([ticketTypeId, date]) 
   @@map("ticket_inventories")
 }
+
+model Order {
+  id             String      @id @default(uuid())
+  orderCode      String      @unique
+  destinationId  String
+  userId         String?
+  buyerName      String?
+  buyerEmail     String?
+  buyerPhone     String?
+  visitDate      DateTime
+  channel        String
+  status         String
+  subtotal       Int
+  discountAmount Int
+  serviceFee     Int
+  totalAmount    Int
+  expiresAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  items          OrderItem[]
+}
+
+model OrderItem {
+  id             String   @id @default(uuid())
+  orderId        String
+  ticketTypeId   String
+  ticketName     String
+  unitPrice      Int
+  quantity       Int
+  discountAmount Int
+  lineTotal      Int
+
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
