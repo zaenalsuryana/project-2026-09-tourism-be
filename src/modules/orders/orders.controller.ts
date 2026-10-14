@@ -60,4 +60,10 @@ export class OrdersController {
   async findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
   }
+
+  @Post(':id/pay')
+  @ApiOperation({ summary: 'Simulasi Pembayaran (Ubah status pesanan jadi PAID)' })
+    async payOrder(@Param('id') id: string) {
+      return this.ordersService.payOrder(id);
+    }
 }

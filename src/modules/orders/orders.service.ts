@@ -198,6 +198,30 @@ export class OrdersService {
     };
   }
 
+  async payOrder(id: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: id },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+    }
+
+    if ( order.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException('Pembayaran ditolak. Status pesanan saat ini adalah ${order.status}.');
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: id },
+      data: { status: 'PAID' },
+    });
+    
+    return {
+      message: 'Pembayaran berhasil dikonfirmasi! E-ticket siap digunakan.',
+      data : updatedOrder,
+    };
+  }
+
   update(id: string, updateOrderDto: UpdateOrderDto) {
     return `This action updates a #${id} order`;
   }
