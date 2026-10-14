@@ -66,4 +66,10 @@ export class OrdersController {
     async payOrder(@Param('id') id: string) {
       return this.ordersService.payOrder(id);
     }
+
+  @Post(':id/cancel')
+  @ApiOperation({ summary: 'Membatalkan pesanan dan mengembalikan kuota ticket' })
+  async cancelOrder(@Param('id') id: string) {
+    return this.ordersService.cancelOrder(id);
+  }
 }

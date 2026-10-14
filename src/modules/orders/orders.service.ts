@@ -222,6 +222,48 @@ export class OrdersService {
     };
   }
 
+  async cancelOrder(id: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: id },
+      include: { items: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+    }
+
+    if (order.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException('Pesanan tidak dapat dibatalkan karena status saat ini adalah ${order.status}.');
+    }
+
+    try {
+      const cancellerdOrder = await this.prisma.$transaction(async (tx) => {
+
+        for (const item of order.items) {
+          await tx.$queryRaw`
+            UPDATE ticket_inventories
+            SET sold = sold - ${item.quantity}, updated_at = now()
+            WHERE ticket_type_id = ${item.ticketTypeId}::uuid
+              AND date = ${order.visitDate}::date
+          `;
+        }
+
+        return await tx.order.update({
+          where: { id: id },
+          data: { status: 'CANCELLED' },
+        });
+      });
+
+      return {
+        message: 'Pesanan berhasil dibatalkan dan kuota ticket telah dikembalikan.',
+        data: cancellerdOrder,
+      };
+
+      } catch (error) {
+        throw new UnprocessableEntityException('Gagal membatalkan pesanan dan mengembalikan kuota.');
+    }
+  }
+
   update(id: string, updateOrderDto: UpdateOrderDto) {
     return `This action updates a #${id} order`;
   }
