@@ -181,8 +181,21 @@ export class OrdersService {
     };
   }
 
-  findOne(id: string) {
-    return `This action returns a #${id} order`;
+  async findOne(id: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: id },
+      include: {
+        items: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+    }
+    return {
+      message: 'Berhasil mengambil detail pesanan',
+      data: order,
+    };
   }
 
   update(id: string, updateOrderDto: UpdateOrderDto) {

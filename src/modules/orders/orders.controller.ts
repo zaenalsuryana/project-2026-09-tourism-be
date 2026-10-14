@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, UseGuards, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, UseGuards, Query, Param } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -55,4 +55,9 @@ export class OrdersController {
     return this.ordersService.findAll(email);
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Melihat detail satu pesanan berdasarkan ID (Bisa untuk Guest)'})
+  async findOne(@Param('id') id: string) {
+    return this.ordersService.findOne(id);
+  }
 }
