@@ -148,8 +148,37 @@ export class OrdersService {
     }
   }
 
-  findAll() {
-    return `This action returns all orders`;
+  async findByUserId(userId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: { userId: userId },
+      include: {
+        items: true, 
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      message: 'Berhasil mengambil riwayat pesanan',
+      data: orders,
+    };
+  }
+
+  async findAll(searchEmail?: string) {
+    // Jika ada searchEmail, cari email itu. Jika tidak, tampilkan semua.
+    const whereCondition = searchEmail ? { buyerEmail: searchEmail } : {};
+
+    const orders = await this.prisma.order.findMany({
+      where: whereCondition,
+      include: {
+        items: true, 
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      message: searchEmail ? `Hasil pencarian untuk ${searchEmail}` : 'Berhasil mengambil seluruh data pesanan',
+      data: orders,
+    };
   }
 
   findOne(id: string) {
