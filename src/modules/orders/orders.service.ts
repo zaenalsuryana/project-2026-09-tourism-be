@@ -2,10 +2,23 @@ import { Injectable, NotFoundException, UnprocessableEntityException, BadRequest
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
+
+// Import SDK Midtrans
+const midtransClient = require('midtrans-client');
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  private snap: any;
+
+  constructor(private readonly prisma: PrismaService) {
+    // 1. Inisialisasi Midtrans Snap Instance
+    this.snap = new midtransClient.Snap({
+      isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+      serverKey: process.env.MIDTRANS_SERVER_KEY,
+      clientKey: process.env.MIDTRANS_CLIENT_KEY,
+    });
+  }
 
   // Helper function untuk generate Order Code (format WST-YYMMDD-XXXXXX)
   private generateOrderCode(): string {
@@ -57,18 +70,15 @@ export class OrdersService {
     }
 
     // =======================================================================
-    // 4. MEMULAI PRISMA TRANSACTION (Disusun sesuai skema aslimu)
+    // 4. MEMULAI PRISMA TRANSACTION
     // =======================================================================
     try {
       const order = await this.prisma.$transaction(
         async (tx) => {
-          // --- A. Pengecekan & Pengurangan Kuota (dari TicketInventory) ---
-          // Urutkan item berdasarkan ID tiket untuk menghindari DB deadlock
+          // --- A. Pengecekan & Pengurangan Kuota ---
           const sortedItems = [...items].sort((a, b) => a.ticketTypeId.localeCompare(b.ticketTypeId));
 
           for (const item of sortedItems) {
-            // Karena skema aslimu belum ada 'reserved', kita langsung tambahkan ke 'sold'
-            // Gunakan $queryRaw yang sudah disesuaikan dengan nama kolom 'date'
             const inv = await tx.$queryRaw<{ sold: number }[]>`
               UPDATE ticket_inventories ti
               SET sold = ti.sold + ${item.quantity}, updated_at = now()
@@ -80,13 +90,12 @@ export class OrdersService {
               RETURNING ti.sold
             `;
 
-            // Jika inv.length 0, artinya gagal update (bisa karena kuota habis, atau inventory belum di-create oleh Manager)
             if (inv.length === 0) {
               throw new UnprocessableEntityException(`QUOTA_EXCEEDED: Kuota tiket untuk jenis tiket ID ${item.ticketTypeId} sudah habis di tanggal tersebut, atau jadwal inventori belum dibuka.`);
             }
           }
 
-          // --- B. Persiapkan Data Pesanan (Harga & Order Items) ---
+          // --- B. Persiapkan Data Pesanan ---
           let subtotal = 0;
           const orderItemsData = items.map((item) => {
             const ticketDetail = ticketTypes.find((t) => t.id === item.ticketTypeId);
@@ -106,7 +115,7 @@ export class OrdersService {
           const totalAmount = subtotal; 
           const orderCode = this.generateOrderCode();
           
-          // --- C. Simpan Order & Order Items ---
+          // --- C. Simpan Order & Order Items (Expired 10 Menit) ---
           const newOrder = await tx.order.create({
             data: {
               orderCode: orderCode,
@@ -122,7 +131,7 @@ export class OrdersService {
               discountAmount: 0,
               serviceFee: 0,
               totalAmount: totalAmount,
-              expiresAt: new Date(Date.now() + 30 * 60 * 1000), 
+              expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 menit
               items: {
                 create: orderItemsData,
               },
@@ -135,9 +144,28 @@ export class OrdersService {
         { timeout: 10000 }
       );
 
+      // =======================================================================
+      // 5. MINTA LINK PEMBAYARAN DARI MIDTRANS
+      // =======================================================================
+      const midtransParams = {
+        transaction_details: {
+          order_id: order.id,
+          gross_amount: order.totalAmount,
+        },
+        customer_details: {
+          first_name: order.buyerName,
+          email: order.buyerEmail || 'no-email@example.com',
+          phone: order.buyerPhone || '080000000000',
+        },
+      };
+
+      const midtransTransaction = await this.snap.createTransaction(midtransParams);
+
       return {
         message: 'Pesanan berhasil dibuat!',
         data: order,
+        paymentUrl: midtransTransaction.redirect_url, // URL untuk bayar via Midtrans
+        paymentToken: midtransTransaction.token,
       };
 
     } catch (error) {
@@ -148,35 +176,30 @@ export class OrdersService {
     }
   }
 
-  async findByUserId(userId: string) {
-    const orders = await this.prisma.order.findMany({
-      where: { userId: userId },
-      include: {
-        items: true, 
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return {
-      message: 'Berhasil mengambil riwayat pesanan',
-      data: orders,
-    };
-  }
-
-  async findAll(searchEmail?: string) {
-    // Jika ada searchEmail, cari email itu. Jika tidak, tampilkan semua.
-    const whereCondition = searchEmail ? { buyerEmail: searchEmail } : {};
+  async findAll(query: any) {
+    const { userId, email, status } = query;
+    const whereCondition: any = {};
+    
+    if (userId) {
+      whereCondition.userId = userId;
+    }
+    if (email) {
+      whereCondition.buyerEmail = { contains: email, mode: 'insensitive' };
+    }
+    if (status) {
+      whereCondition.status = status;
+    }
 
     const orders = await this.prisma.order.findMany({
       where: whereCondition,
       include: {
-        items: true, 
+        items: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
     return {
-      message: searchEmail ? `Hasil pencarian untuk ${searchEmail}` : 'Berhasil mengambil seluruh data pesanan',
+      message: 'Berhasil mengambil daftar pesanan',
       data: orders,
     };
   }
@@ -190,7 +213,7 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+      throw new NotFoundException(`Pesanan dengan ID ${id} tidak ditemukan.`);
     }
     return {
       message: 'Berhasil mengambil detail pesanan',
@@ -198,28 +221,41 @@ export class OrdersService {
     };
   }
 
-  async payOrder(id: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: id },
-    });
+  async processMidtransNotification(payload: any) {
+    const orderId = payload.order_id;
+    const transactionStatus = payload.transaction_status;
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
 
     if (!order) {
-      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+      throw new NotFoundException({
+        statusCode: 404,
+        message: 'Pesanan tidak ditemukan',
+        error: `Order ID ${orderId} dari Midtrans tidak ada di database kami.`
+      });
     }
 
-    if ( order.status !== 'PENDING_PAYMENT') {
-      throw new BadRequestException('Pembayaran ditolak. Status pesanan saat ini adalah ${order.status}.');
+    // Perbaikan respons penolakan jika status bukan PENDING_PAYMENT
+    if (order.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException({
+        statusCode: 400,
+        message: 'Pembayaran Ditolak',
+        error: `Transaksi gagal diproses karena status pesanan saat ini adalah ${order.status}. Pembayaran hanya berlaku untuk status PENDING_PAYMENT.`
+      });
     }
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: id },
-      data: { status: 'PAID' },
-    });
-    
-    return {
-      message: 'Pembayaran berhasil dikonfirmasi! E-ticket siap digunakan.',
-      data : updatedOrder,
-    };
+    if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: 'PAID' },
+      });
+      return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans' };
+    } else if (transactionStatus === 'cancel' || transactionStatus === 'expire' || transactionStatus === 'deny') {
+      await this.cancelOrder(orderId);
+      return { message: 'Pembayaran gagal/kadaluarsa. Pesanan dibatalkan otomatis.' };
+    }
+
+    return { message: 'Status pembayaran diabaikan' };
   }
 
   async cancelOrder(id: string) {
@@ -229,11 +265,11 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException('Pesanan dengan ID ${id} tidak ditemukan.');
+      throw new NotFoundException(`Pesanan dengan ID ${id} tidak ditemukan.`);
     }
 
     if (order.status !== 'PENDING_PAYMENT') {
-      throw new BadRequestException('Pesanan tidak dapat dibatalkan karena status saat ini adalah ${order.status}.');
+      throw new BadRequestException(`Pesanan tidak dapat dibatalkan karena status saat ini adalah ${order.status}.`);
     }
 
     try {
@@ -259,8 +295,8 @@ export class OrdersService {
         data: cancellerdOrder,
       };
 
-      } catch (error) {
-        throw new UnprocessableEntityException('Gagal membatalkan pesanan dan mengembalikan kuota.');
+    } catch (error) {
+      throw new UnprocessableEntityException('Gagal membatalkan pesanan dan mengembalikan kuota.');
     }
   }
 
@@ -270,5 +306,45 @@ export class OrdersService {
 
   remove(id: string) {
     return `This action removes a #${id} order`;
+  }
+
+  // Cron Job pembatalan pesanan kedaluwarsa setiap 1 menit
+  @Cron(CronExpression.EVERY_MINUTE)
+  async handleCronCancelExpiredOrders() {
+    const expiredOrders = await this.prisma.order.findMany({
+      where: {
+        status: 'PENDING_PAYMENT',
+        expiresAt: { lt: new Date() },
+      },
+      include: { items: true },
+    });
+
+    if (expiredOrders.length === 0) return;
+
+    console.log(`[CRON JOB] Ditemukan ${expiredOrders.length} pesanan kadaluarsa. Memulai pembatalan massal...`);
+
+    for (const order of expiredOrders) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          for (const item of order.items) {
+            await tx.$queryRaw`
+              UPDATE ticket_inventories
+              SET sold = sold - ${item.quantity}, updated_at = now()
+              WHERE ticket_type_id = ${item.ticketTypeId}::uuid
+                AND date = ${order.visitDate}::date
+            `;
+          }
+
+          await tx.order.update({
+            where: { id: order.id },
+            data: { status: 'CANCELLED' },
+          });
+        });
+
+        console.log(`[CRON JOB] Berhasil membatalkan pesanan ${order.orderCode} (ID: ${order.id})`);
+      } catch (error) {
+        console.error(`[CRON JOB] Gagal membatalkan pesanan ${order.orderCode}:`, (error as Error).message);
+      }
+    }
   }
 }
