@@ -152,6 +152,10 @@ export class OrdersService {
           order_id: order.id,
           gross_amount: order.totalAmount,
         },
+        expiry: {
+          unit: 'minute',
+          duration: 10,
+        },
         customer_details: {
           first_name: order.buyerName,
           email: order.buyerEmail || 'no-email@example.com',
