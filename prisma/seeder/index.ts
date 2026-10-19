@@ -4,9 +4,7 @@ dotenv.config();
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { seedPositions } from './data/position.seed';
-import { seedPermissions } from './data/permission.seed';
-import { seedUsers } from './data/user.seed';
+import { seedUsers } from './data/user.seed'; // Cukup import user.seed
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool as any);
@@ -15,35 +13,32 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🌱 Starting database seeding...\n');
 
-  // Clear existing data
+  // 1. Membersihkan data lama berdasarkan urutan relasi (Child -> Parent)
   console.log('🗑️  Clearing existing data...');
-  await prisma.positionPermission.deleteMany();
+  await prisma.orderItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.ticketInventory.deleteMany();
+  await prisma.ticketType.deleteMany();
+  await prisma.destination.deleteMany();
+  await prisma.category.deleteMany();
+  await prisma.refreshToken.deleteMany();
+  await prisma.authToken.deleteMany();
+  await prisma.userIdentity.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.permission.deleteMany();
-  await prisma.position.deleteMany();
 
-  // Run seeders
-  const { adminPosition, memberPosition } = await seedPositions(prisma);
-  await seedPermissions(prisma, adminPosition.id, memberPosition.id);
-  const { adminUser, memberUser, defaultPassword } = await seedUsers(
-    prisma,
-    adminPosition.id,
-    memberPosition.id,
-  );
+  // 2. Jalankan Seeder User (tanpa argumen position ID)
+  const { adminUser, defaultPassword } = await seedUsers(prisma);
 
-  // Summary
+  // 3. Ringkasan Hasil Seeding
   console.log('\n✨ Database seeding completed!\n');
   console.log('📊 Summary:');
-  console.log(`   - Positions: ${await prisma.position.count()}`);
-  console.log(`   - Permissions: ${await prisma.permission.count()}`);
   console.log(`   - Users: ${await prisma.user.count()}`);
-  console.log(
-    `   - Position-Permission Links: ${await prisma.positionPermission.count()}\n`,
-  );
+  console.log(`   - Categories: ${await prisma.category.count()}`);
+  console.log(`   - Destinations: ${await prisma.destination.count()}`);
+  console.log(`   - Ticket Types: ${await prisma.ticketType.count()}\n`);
 
   console.log('🔑 Default Users:');
-  console.log(`   Admin: ${adminUser.email} / ${defaultPassword}`);
-  console.log(`   Member: ${memberUser.email} / ${defaultPassword}\n`);
+  console.log(`   Admin: ${adminUser.email} / ${defaultPassword}\n`);
 }
 
 main()
@@ -53,4 +48,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });

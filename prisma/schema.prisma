@@ -36,29 +36,30 @@ enum TokenType {
 
 // ===== Auth & user =====
 model User {
-  id               String         @id @default(uuid(7)) @db.Uuid
-  email            String         @unique @db.VarChar(254)
-  passwordHash     String?        @map("password_hash")
-  fullName         String         @map("full_name") @db.VarChar(120)
-  phone            String?        @db.VarChar(20)
-  avatarUrl        String?        @map("avatar_url")
-  birthDate        DateTime?      @map("birth_date") @db.Date
-  city             String?        @db.VarChar(80)
-  role             UserRole       @default(TOURIST)
-  status           UserStatus     @default(ACTIVE)
-  emailVerifiedAt  DateTime?      @map("email_verified_at") @db.Timestamptz(6)
-  failedLoginCount Int            @default(0) @map("failed_login_count")
-  lockedUntil      DateTime?      @map("locked_until") @db.Timestamptz(6)
-  lastLoginAt      DateTime?      @map("last_login_at") @db.Timestamptz(6)
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz(6)
-  
-  identities         UserIdentity[]
-  authTokens         AuthToken[]
-  refreshTokens      RefreshToken[]
-  managedDestination Destination?  
-  createdTicketTypes TicketType[] @relation("UserCreatedTickets")
+  id              String    @id @default(uuid(7)) @db.Uuid
+  email           String    @unique @db.VarChar(254)
+  passwordHash    String?   @map("password_hash")
+  fullName        String    @map("full_name") @db.VarChar(120)
+  phone           String    @unique @db.VarChar(20) // 👈 Nomor HP wajib & unik terhubung ke akun
+  avatarUrl       String?   @map("avatar_url")
+  birthDate       DateTime? @map("birth_date") @db.Date
+  city            String?   @db.VarChar(80)
+  role            UserRole  @default(TOURIST)
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  failedLoginCount Int      @default(0) @map("failed_login_count")
+  lockedUntil     DateTime? @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  identities           UserIdentity[]
+  authTokens           AuthToken[]
+  refreshTokens        RefreshToken[]
+  managedDestination   Destination?  
+  createdTicketTypes   TicketType[]   @relation("UserCreatedTickets")
+  orders               Order[]        // 👈 Relasi balik ke Order
 
   @@index([role, status])
   @@map("users")
@@ -71,7 +72,7 @@ model UserIdentity {
   providerUserId String       @map("provider_user_id") @db.VarChar(191)
   providerEmail  String?      @map("provider_email") @db.VarChar(254)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  
+
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
@@ -88,7 +89,7 @@ model AuthToken {
   expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
   usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  
+
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
@@ -106,7 +107,7 @@ model RefreshToken {
   revokedAt    DateTime?     @map("revoked_at") @db.Timestamptz(6)
   replacedById String?       @unique @map("replaced_by_id") @db.Uuid
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  
+
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
   replaces     RefreshToken? @relation("TokenRotation")
@@ -118,11 +119,11 @@ model RefreshToken {
 
 // ===== Destinasi =====
 model Category {
-  id          Int           @id @default(autoincrement()) @db.SmallInt
-  name        String        @unique @db.VarChar(60)
-  slug        String        @unique @db.VarChar(80)
-  
-  destinations Destination[]  
+  id           Int           @id @default(autoincrement()) @db.SmallInt
+  name         String        @unique @db.VarChar(60)
+  slug         String        @unique @db.VarChar(80)
+
+  destinations Destination[] 
 
   @@map("categories")
 }
@@ -136,30 +137,31 @@ enum DestinationStatus {
 }
 
 model Destination {
-  id            String            @id @default(uuid(7)) @db.Uuid
-  managerId     String            @unique @map("manager_id") @db.Uuid
-  categoryId    Int               @map("category_id") @db.SmallInt
-  name          String            @db.VarChar(150)
-  slug          String            @unique @db.VarChar(170)
-  description   String
-  address       String
-  province      String            @db.VarChar(80)
-  city          String            @db.VarChar(80)
-  latitude      Decimal?          @db.Decimal(9, 6)
-  longitude     Decimal?          @db.Decimal(9, 6)
-  contactPhone  String?           @map("contact_phone") @db.VarChar(20)
-  contactEmail  String?           @map("contact_email") @db.VarChar(254)
-  facilities    String[]          @default([])
-  status        DestinationStatus @default(DRAFT)
-  isSalesOpen   Boolean           @default(true) @map("is_sales_open")
-  statusReason  String?           @map("status_reason")
-  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  id           String            @id @default(uuid(7)) @db.Uuid
+  managerId    String            @unique @map("manager_id") @db.Uuid
+  categoryId   Int               @map("category_id") @db.SmallInt
+  name         String            @db.VarChar(150)
+  slug         String            @unique @db.VarChar(170)
+  description  String
+  address      String
+  province     String            @db.VarChar(80)
+  city         String            @db.VarChar(80)
+  latitude     Decimal?          @db.Decimal(9, 6)
+  longitude    Decimal?          @db.Decimal(9, 6)
+  contactPhone String?           @map("contact_phone") @db.VarChar(20)
+  contactEmail String?           @map("contact_email") @db.VarChar(254)
+  facilities   String[]          @default([])
+  status       DestinationStatus @default(DRAFT)
+  isSalesOpen  Boolean           @default(true) @map("is_sales_open")
+  statusReason String?           @map("status_reason")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?         @map("deleted_at") @db.Timestamptz(6)
 
-  manager       User              @relation(fields: [managerId], references: [id])
-  category      Category          @relation(fields: [categoryId], references: [id])
-  ticketTypes   TicketType[]
+  manager      User              @relation(fields: [managerId], references: [id])
+  category     Category          @relation(fields: [categoryId], references: [id])
+  ticketTypes  TicketType[]
+  orders       Order[]           // 👈 Relasi balik ke Order
 
   @@index([status, province, city])
   @@index([categoryId])
@@ -168,35 +170,34 @@ model Destination {
 
 // ===== Tiket & inventori =====
 model TicketType {
-  id            String    @id @default(uuid(7)) @db.Uuid
-  destinationId String    @map("destination_id") @db.Uuid
-  name          String    @db.VarChar(100)
-  description   String?
-  price         Int         
-  dailyQuota    Int?      @map("daily_quota")
-  minPerOrder   Int       @default(1) @map("min_per_order") @db.SmallInt
-  maxPerOrder   Int       @default(10) @map("max_per_order") @db.SmallInt
-  salesStartAt  DateTime? @map("sales_start_at") @db.Timestamptz(6)
-  salesEndAt    DateTime? @map("sales_end_at") @db.Timestamptz(6)
-  isActive      Boolean   @default(true) @map("is_active")
-  sortOrder     Int       @default(0) @map("sort_order") @db.SmallInt
-  createdById   String?   @map("created_by_id") @db.Uuid
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id           String    @id @default(uuid(7)) @db.Uuid
+  destinationId String   @map("destination_id") @db.Uuid
+  name         String    @db.VarChar(100)
+  description  String?
+  price        Int        
+  dailyQuota   Int?      @map("daily_quota")
+  minPerOrder  Int       @default(1) @map("min_per_order") @db.SmallInt
+  maxPerOrder  Int       @default(10) @map("max_per_order") @db.SmallInt
+  salesStartAt DateTime? @map("sales_start_at") @db.Timestamptz(6)
+  salesEndAt   DateTime? @map("sales_end_at") @db.Timestamptz(6)
+  isActive     Boolean   @default(true) @map("is_active")
+  sortOrder    Int       @default(0) @map("sort_order") @db.SmallInt
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
-  createdBy     User?       @relation("UserCreatedTickets", fields: [createdById], references: [id]) 
-  
-  // Relasi balik untuk TicketInventory
+  destination       Destination       @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  createdBy         User?             @relation("UserCreatedTickets", fields: [createdById], references: [id]) 
   ticketInventories TicketInventory[]
+  orderItems        OrderItem[]       // 👈 Relasi balik ke OrderItem
 
   @@index([destinationId])
   @@map("ticket_types")
 }
 
 model TicketInventory {
-  id           String     @id @default(uuid()) @db.Uuid
+  id           String     @id @default(uuid(7)) @db.Uuid
   ticketTypeId String     @map("ticket_type_id") @db.Uuid
   date         DateTime   @db.Date
   quota        Int        
@@ -210,37 +211,48 @@ model TicketInventory {
   @@map("ticket_inventories")
 }
 
+// ===== Transaksi Pesanan (Orders) =====
 model Order {
-  id             String      @id @default(uuid())
-  orderCode      String      @unique
-  destinationId  String
-  userId         String?
-  buyerName      String?
-  buyerEmail     String?
-  buyerPhone     String?
-  visitDate      DateTime
-  channel        String
-  status         String
+  id             String      @id @default(uuid(7)) @db.Uuid
+  orderCode      String      @unique @map("order_code") @db.VarChar(50)
+  destinationId  String      @map("destination_id") @db.Uuid
+  userId         String?     @map("user_id") @db.Uuid
+  buyerName      String      @map("buyer_name") @db.VarChar(120)
+  buyerEmail     String      @map("buyer_email") @db.VarChar(254)
+  buyerPhone     String?     @map("buyer_phone") @db.VarChar(20)
+  visitDate      DateTime    @map("visit_date") @db.Date
+  channel        String      @default("ONLINE") @db.VarChar(20)
+  status         String      @default("PENDING_PAYMENT") @db.VarChar(30)
   subtotal       Int
-  discountAmount Int
-  serviceFee     Int
-  totalAmount    Int
-  expiresAt      DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  discountAmount Int         @default(0) @map("discount_amount")
+  serviceFee     Int         @default(0) @map("service_fee")
+  totalAmount    Int         @map("total_amount")
+  expiresAt      DateTime?   @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  destination    Destination @relation(fields: [destinationId], references: [id])
   items          OrderItem[]
+
+  @@index([userId])
+  @@index([destinationId])
+  @@index([status])
+  @@map("orders")
 }
 
 model OrderItem {
-  id             String   @id @default(uuid())
-  orderId        String
-  ticketTypeId   String
-  ticketName     String
-  unitPrice      Int
+  id             String     @id @default(uuid(7)) @db.Uuid
+  orderId        String     @map("order_id") @db.Uuid
+  ticketTypeId   String     @map("ticket_type_id") @db.Uuid
+  ticketName     String     @map("ticket_name") @db.VarChar(100)
+  unitPrice      Int        @map("unit_price")
   quantity       Int
-  discountAmount Int
-  lineTotal      Int
+  discountAmount Int        @default(0) @map("discount_amount")
+  lineTotal      Int        @map("line_total")
 
-  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketType     TicketType @relation(fields: [ticketTypeId], references: [id])
+
+  @@map("order_items")
 }

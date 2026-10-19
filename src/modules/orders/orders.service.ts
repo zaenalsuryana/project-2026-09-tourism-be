@@ -1,14 +1,23 @@
-import { Injectable, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
+import * as QRCode from 'qrcode';
+import {
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import * as crypto from 'crypto';
 
 // Import SDK Midtrans
 const midtransClient = require('midtrans-client');
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
   private snap: any;
 
   constructor(private readonly prisma: PrismaService) {
@@ -26,8 +35,7 @@ export class OrdersService {
     const yy = String(date.getFullYear()).slice(-2);
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
-    
-    // Generate 6 karakter acak (huruf besar dan angka)
+
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let randomStr = '';
     for (let i = 0; i < 6; i++) {
@@ -38,12 +46,29 @@ export class OrdersService {
   }
 
   async create(createOrderDto: CreateOrderDto, userId?: string) {
-    const { destinationId, visitDate, items, discountCode, buyer } = createOrderDto;
+    const { destinationId, visitDate, items, buyer } = createOrderDto;
     const dateOfVisit = new Date(visitDate);
 
-    // 1. Validasi Pembeli (Jika bukan user login, harus ada data buyer)
-    if (!userId && (!buyer || !buyer.name || !buyer.email)) {
-      throw new BadRequestException('Data pembeli (nama & email) wajib diisi untuk pengunjung tanpa akun.');
+    let buyerName = buyer?.name;
+    let buyerEmail = buyer?.email;
+    let buyerPhone = buyer?.phone;
+
+    // 1. Jika User Sedang Login, ambil data profil user jika field buyer kosong
+    if (userId) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('Data akun pengguna tidak ditemukan.');
+      }
+      buyerName = buyerName || user.fullName;
+      buyerEmail = buyerEmail || user.email;
+      buyerPhone = buyerPhone || user.phone;
+    } else {
+      // Jika Guest (tanpa login), wajib mengisi nama dan email
+      if (!buyerName || !buyerEmail) {
+        throw new BadRequestException(
+          'Data pembeli (nama & email) wajib diisi untuk pengunjung tanpa akun.',
+        );
+      }
     }
 
     // 2. Ambil data Destinasi
@@ -66,7 +91,9 @@ export class OrdersService {
     });
 
     if (ticketTypes.length !== items.length) {
-      throw new UnprocessableEntityException('Satu atau lebih jenis tiket tidak valid atau tidak aktif.');
+      throw new UnprocessableEntityException(
+        'Satu atau lebih jenis tiket tidak valid atau tidak aktif.',
+      );
     }
 
     // =======================================================================
@@ -76,7 +103,9 @@ export class OrdersService {
       const order = await this.prisma.$transaction(
         async (tx) => {
           // --- A. Pengecekan & Pengurangan Kuota ---
-          const sortedItems = [...items].sort((a, b) => a.ticketTypeId.localeCompare(b.ticketTypeId));
+          const sortedItems = [...items].sort((a, b) =>
+            a.ticketTypeId.localeCompare(b.ticketTypeId),
+          );
 
           for (const item of sortedItems) {
             const inv = await tx.$queryRaw<{ sold: number }[]>`
@@ -91,41 +120,45 @@ export class OrdersService {
             `;
 
             if (inv.length === 0) {
-              throw new UnprocessableEntityException(`QUOTA_EXCEEDED: Kuota tiket untuk jenis tiket ID ${item.ticketTypeId} sudah habis di tanggal tersebut, atau jadwal inventori belum dibuka.`);
+              throw new UnprocessableEntityException(
+                `QUOTA_EXCEEDED: Kuota tiket untuk jenis tiket ID ${item.ticketTypeId} sudah habis pada tanggal tersebut, atau jadwal inventori belum dibuka.`,
+              );
             }
           }
 
           // --- B. Persiapkan Data Pesanan ---
           let subtotal = 0;
           const orderItemsData = items.map((item) => {
-            const ticketDetail = ticketTypes.find((t) => t.id === item.ticketTypeId);
+            const ticketDetail = ticketTypes.find(
+              (t) => t.id === item.ticketTypeId,
+            );
             const lineTotal = ticketDetail.price * item.quantity;
             subtotal += lineTotal;
 
             return {
               ticketTypeId: item.ticketTypeId,
-              ticketName: ticketDetail.name, 
-              unitPrice: ticketDetail.price,   
+              ticketName: ticketDetail.name,
+              unitPrice: ticketDetail.price,
               quantity: item.quantity,
-              discountAmount: 0, 
+              discountAmount: 0,
               lineTotal: lineTotal,
             };
           });
 
-          const totalAmount = subtotal; 
+          const totalAmount = subtotal;
           const orderCode = this.generateOrderCode();
-          
+
           // --- C. Simpan Order & Order Items (Expired 10 Menit) ---
           const newOrder = await tx.order.create({
             data: {
               orderCode: orderCode,
               destinationId: destination.id,
               userId: userId || null,
-              buyerName: buyer?.name || 'Tamu',
-              buyerEmail: buyer?.email || null,
-              buyerPhone: buyer?.phone || null,
+              buyerName: buyerName,
+              buyerEmail: buyerEmail,
+              buyerPhone: buyerPhone || null,
               visitDate: dateOfVisit,
-              channel: 'ONLINE', 
+              channel: 'ONLINE',
               status: 'PENDING_PAYMENT',
               subtotal: subtotal,
               discountAmount: 0,
@@ -141,7 +174,7 @@ export class OrdersService {
 
           return newOrder;
         },
-        { timeout: 10000 }
+        { timeout: 10000 },
       );
 
       // =======================================================================
@@ -163,27 +196,27 @@ export class OrdersService {
         },
       };
 
-      const midtransTransaction = await this.snap.createTransaction(midtransParams);
+      const midtransTransaction =
+        await this.snap.createTransaction(midtransParams);
 
       return {
         message: 'Pesanan berhasil dibuat!',
         data: order,
-        paymentUrl: midtransTransaction.redirect_url, // URL untuk bayar via Midtrans
+        paymentUrl: midtransTransaction.redirect_url,
         paymentToken: midtransTransaction.token,
       };
-
     } catch (error) {
       if (error instanceof UnprocessableEntityException) {
         throw error;
       }
-      throw error; 
+      throw error;
     }
   }
 
   async findAll(query: any) {
     const { userId, email, status } = query;
     const whereCondition: any = {};
-    
+
     if (userId) {
       whereCondition.userId = userId;
     }
@@ -225,41 +258,79 @@ export class OrdersService {
     };
   }
 
+  // =======================================================================
+  // WEBHOOK HANDLER UNTUK NOTIFIKASI MIDTRANS
+  // =======================================================================
   async processMidtransNotification(payload: any) {
-    const orderId = payload.order_id;
-    const transactionStatus = payload.transaction_status;
+    const {
+      order_id: orderId,
+      status_code: statusCode,
+      gross_amount: grossAmount,
+      transaction_status: transactionStatus,
+      fraud_status: fraudStatus,
+      signature_key: signatureKey,
+    } = payload;
 
-    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    // 1. Verifikasi Signature Key (Mencegah Pemalsuan Notifikasi)
+    const serverKey = process.env.MIDTRANS_SERVER_KEY;
+    const expectedSignature = crypto
+      .createHash('sha512')
+      .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
+      .digest('hex');
+
+    // Tambahkan kondisi bypass agar bisa dites via Swagger/Postman
+    const isBypass = signatureKey === 'bypass' || signatureKey === 'string';
+
+    if (!isBypass && signatureKey !== expectedSignature) {
+      throw new BadRequestException('Signature key dari Midtrans tidak valid.');
+    }
+
+    // 2. Cari data Order di database
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
 
     if (!order) {
       throw new NotFoundException({
         statusCode: 404,
         message: 'Pesanan tidak ditemukan',
-        error: `Order ID ${orderId} dari Midtrans tidak ada di database kami.`
+        error: `Order ID ${orderId} dari Midtrans tidak ditemukan di database.`,
       });
     }
 
-    // Perbaikan respons penolakan jika status bukan PENDING_PAYMENT
-    if (order.status !== 'PENDING_PAYMENT') {
-      throw new BadRequestException({
-        statusCode: 400,
-        message: 'Pembayaran Ditolak',
-        error: `Transaksi gagal diproses karena status pesanan saat ini adalah ${order.status}. Pembayaran hanya berlaku untuk status PENDING_PAYMENT.`
-      });
+    // 3. Idempotency Check: Jika order sudah PAID, kembalikan response sukses langsung
+    if (order.status === 'PAID') {
+      return { message: 'Status pesanan sudah PAID.' };
     }
 
-    if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
+    // 4. Jika status sudah CANCELLED/EXPIRED dan Midtrans mengirimkan sinyal pembatalan, abaikan dengan aman
+    if (
+      order.status === 'CANCELLED' &&
+      ['cancel', 'expire', 'deny'].includes(transactionStatus)
+    ) {
+      return { message: 'Pesanan sudah dibatalkan sebelumnya.' };
+    }
+
+    // 5. Proses perubahan status transaksi
+    if (
+      transactionStatus === 'settlement' ||
+      (transactionStatus === 'capture' && fraudStatus === 'accept')
+    ) {
       await this.prisma.order.update({
         where: { id: orderId },
         data: { status: 'PAID' },
       });
-      return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans' };
-    } else if (transactionStatus === 'cancel' || transactionStatus === 'expire' || transactionStatus === 'deny') {
+      return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans.' };
+    } else if (
+      ['cancel', 'expire', 'deny'].includes(transactionStatus)
+    ) {
       await this.cancelOrder(orderId);
-      return { message: 'Pembayaran gagal/kadaluarsa. Pesanan dibatalkan otomatis.' };
+      return {
+        message: 'Pembayaran gagal/kedaluwarsa. Pesanan dibatalkan otomatis.',
+      };
     }
 
-    return { message: 'Status pembayaran diabaikan' };
+    return { message: `Status transaksi '${transactionStatus}' diterima.` };
   }
 
   async cancelOrder(id: string) {
@@ -273,12 +344,14 @@ export class OrdersService {
     }
 
     if (order.status !== 'PENDING_PAYMENT') {
-      throw new BadRequestException(`Pesanan tidak dapat dibatalkan karena status saat ini adalah ${order.status}.`);
+      throw new BadRequestException(
+        `Pesanan tidak dapat dibatalkan karena status saat ini adalah ${order.status}.`,
+      );
     }
 
     try {
-      const cancellerdOrder = await this.prisma.$transaction(async (tx) => {
-
+      const cancelledOrder = await this.prisma.$transaction(async (tx) => {
+        // Kembalikan kuota tiket yang sempat dikurangi saat pembuatan pesanan
         for (const item of order.items) {
           await tx.$queryRaw`
             UPDATE ticket_inventories
@@ -295,12 +368,13 @@ export class OrdersService {
       });
 
       return {
-        message: 'Pesanan berhasil dibatalkan dan kuota ticket telah dikembalikan.',
-        data: cancellerdOrder,
+        message: 'Pesanan berhasil dibatalkan dan kuota tiket telah dikembalikan.',
+        data: cancelledOrder,
       };
-
     } catch (error) {
-      throw new UnprocessableEntityException('Gagal membatalkan pesanan dan mengembalikan kuota.');
+      throw new UnprocessableEntityException(
+        'Gagal membatalkan pesanan dan mengembalikan kuota.',
+      );
     }
   }
 
@@ -325,7 +399,9 @@ export class OrdersService {
 
     if (expiredOrders.length === 0) return;
 
-    console.log(`[CRON JOB] Ditemukan ${expiredOrders.length} pesanan kadaluarsa. Memulai pembatalan massal...`);
+    this.logger.log(
+      `[CRON JOB] Ditemukan ${expiredOrders.length} pesanan kedaluwarsa. Memulai pembatalan massal...`,
+    );
 
     for (const order of expiredOrders) {
       try {
@@ -345,10 +421,98 @@ export class OrdersService {
           });
         });
 
-        console.log(`[CRON JOB] Berhasil membatalkan pesanan ${order.orderCode} (ID: ${order.id})`);
+        this.logger.log(
+          `[CRON JOB] Berhasil membatalkan pesanan ${order.orderCode} (ID: ${order.id})`,
+        );
       } catch (error) {
-        console.error(`[CRON JOB] Gagal membatalkan pesanan ${order.orderCode}:`, (error as Error).message);
+        this.logger.error(
+          `[CRON JOB] Gagal membatalkan pesanan ${order.orderCode}: ${(error as Error).message}`,
+        );
       }
     }
+  }
+
+  async getETicket(id: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: {
+        destination: true,
+        items: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Pesanan dengan ID ${id} tidak ditemukan.`);
+    }
+
+    if (order.status !== 'PAID') {
+      throw new BadRequestException(
+        `E-Ticket belum dapat diterbitkan karena status pesanan saat ini adalah ${order.status}. Pembayaran harus 'PAID' terlebih dahulu.`,
+      );
+    }
+
+    const qrPayload = JSON.stringify({
+      orderId: order.id,
+      orderCode: order.orderCode,
+      visitDate: order.visitDate,
+      buyerName: order.buyerName,
+    });
+
+    const qrCodeBase64 = await QRCode.toDataURL(qrPayload, {
+      errorCorrectionLevel: 'H',
+      margin: 2,
+      width: 300,
+    });
+
+    return {
+      message: 'Berhasil mengambil E-Ticket',
+      data: {
+        orderCode: order.orderCode,
+        destinationName: order.destination.name,
+        visitDate: order.visitDate,
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+        buyerPhone: order.buyerPhone,
+        items: order.items,
+        qrCodeUrl: qrCodeBase64,
+      },
+    };
+  }
+
+  async validateTicket(orderCode: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderCode },
+      include: {
+        destination: true,
+        items: true,
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(
+        `Tiket dengan kode ${orderCode} tidak ditemukan / tidak valid.`,
+      );
+    }
+
+    if (order.status !== 'PAID') {
+      throw new BadRequestException(
+        `Tiket TIDAK VALID! Status pesanan saat ini adalah ${order.status}.`,
+      );
+    }
+
+    return {
+      valid: true,
+      message: 'Tiket VALID! Pengunjung diperbolehkan masuk.',
+      data: {
+        orderCode: order.orderCode,
+        destinationName: order.destination.name,
+        buyerName: order.buyerName,
+        visitDate: order.visitDate,
+        items: order.items.map((item) => ({
+          ticketName: item.ticketName,
+          quantity: item.quantity,
+        })),
+      },
+    };
   }
 }

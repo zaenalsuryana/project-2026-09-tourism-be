@@ -6,6 +6,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtService } from '@nestjs/jwt';
 import { MailerService } from '@nestjs-modules/mailer';
+import { UserRole } from '@prisma/client'; // 👈 Import enum UserRole
 import * as argon2 from 'argon2';
 
 @Injectable()
@@ -17,7 +18,8 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto) {
-    const { email, password, fullName } = registerDto;
+    // 1. Tambahkan 'phone' dari registerDto
+    const { email, password, fullName, phone } = registerDto;
 
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
@@ -29,12 +31,14 @@ export class AuthService {
 
     const passwordHash = await argon2.hash(password);
 
+    // 2. Masukkan 'phone' dan gunakan Enum 'UserRole.TOURIST'
     const user = await this.prisma.user.create({
       data: {
         email,
         passwordHash,
         fullName,
-        role: 'TOURIST',
+        phone, // 👈 Properti wajib
+        role: UserRole.TOURIST,
       },
     });
 
@@ -49,6 +53,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone, // 👈 Sertakan phone di response
       role: user.role,
       avatar: user.avatarUrl,
     };
@@ -88,6 +93,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone, // 👈 Sertakan phone
       role: user.role,
       avatar: user.avatarUrl,
     };
@@ -151,7 +157,7 @@ export class AuthService {
     }
   }
 
-  async validateGoogleUser(googleUser: { email: string; fullName: string; avatar?: string }) {
+  async validateGoogleUser(googleUser: { email: string; fullName: string; avatar?: string; phone?: string }) {
     let user = await this.prisma.user.findUnique({
       where: { email: googleUser.email },
     });
@@ -162,7 +168,9 @@ export class AuthService {
           email: googleUser.email,
           fullName: googleUser.fullName,
           avatarUrl: googleUser.avatar,
-          role: 'TOURIST',
+          // 3. Fallback nomor telepon unik jika daftar via Google OAuth
+          phone: googleUser.phone || `0800${Date.now().toString().slice(-8)}`,
+          role: UserRole.TOURIST,
         },
       });
     }
@@ -178,6 +186,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone, // 👈 Sertakan phone
       role: user.role,
       avatar: user.avatarUrl,
     };
@@ -198,30 +207,28 @@ export class AuthService {
       throw new NotFoundException('Pengguna tidak ditemukan.');
     }
 
-    // 1. Buat payload JWT yang sama seperti saat login/register
     const payload = {
       userId: user.id,
       email: user.email,
       role: user.role,
     };
     
-    // 2. Generate ulang accessToken-nya
     const accessToken = this.jwtService.sign(payload);
 
     const sanitizedUser = {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      phone: user.phone, // 👈 Sertakan phone
       role: user.role,
       avatar: user.avatarUrl,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
 
-    // 3. Sertakan accessToken ke dalam return object
     return {
       message: 'Berhasil mengambil data profil lengkap',
-      accessToken, // <--- Ini yang membuat token muncul di response body profil
+      accessToken,
       data: sanitizedUser,
     };
   }
