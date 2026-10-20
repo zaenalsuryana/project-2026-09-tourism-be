@@ -1,15 +1,19 @@
-import { Controller, Post, Get, Body, Req, Query, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Query, Param, HttpCode, HttpStatus, } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, } from '@nestjs/swagger';
-import { Public } from '../../common/decorators/public.decorator'; // 👈 Import decorator Public
+import { CreateOnsiteOrderDto } from './dto/create-onsite-order.dto';
 import { MidtransNotificationDto } from './dto/midtrans-notification.dto';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Orders & E-Tickets')
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  // =========================================================================
+  // 1. PEMBELIAN TIKET ONLINE (PUBLIC / TOURIST)
+  // =========================================================================
   @Post()
   @ApiOperation({
     summary:
@@ -17,10 +21,8 @@ export class OrdersController {
   })
   @ApiBearerAuth()
   async create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
-    // 1. Coba ambil dari req.user jika menggunakan Auth Guard
     let userId = req.user?.id || req.user?.userId || req.user?.sub;
 
-    // 2. Jika req.user kosong TAPI user mengirimkan token di header (Opsional Auth)
     if (!userId && req.headers.authorization?.startsWith('Bearer ')) {
       try {
         const token = req.headers.authorization.split(' ')[1];
@@ -39,6 +41,31 @@ export class OrdersController {
     return this.ordersService.create(createOrderDto, userId);
   }
 
+  // =========================================================================
+  // 2. PENJUALAN TIKET LOKET / ONSITE (MANAGER / STAFF)
+  // =========================================================================
+  @Post('staff/onsite-orders')
+  @ApiOperation({
+    summary: 'Penjualan tiket loket / onsite (Khusus Manager & Staff)',
+  })
+  @ApiBearerAuth()
+  async createOnsiteOrder(
+    @Body() dto: CreateOnsiteOrderDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id || req.user?.userId || req.user?.sub;
+    const destinationId = req.user?.destinationId;
+
+    return this.ordersService.createOnsiteOrder(
+      dto,
+      userId,
+      destinationId,
+    );
+  }
+
+  // =========================================================================
+  // 3. DAFTAR PESANAN
+  // =========================================================================
   @Get()
   @ApiOperation({
     summary:
@@ -48,8 +75,10 @@ export class OrdersController {
     return this.ordersService.findAll(query);
   }
 
-  // === Route Webhook Ditaruh Sebelum Route Parameter :id ===
-  @Public() // 👈 Mencegah JWT Auth Guard memblokir panggilan dari Server Midtrans
+  // =========================================================================
+  // 4. WEBHOOK MIDTRANS
+  // =========================================================================
+  @Public()
   @Post('midtrans-webhook')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Webhook notifikasi otomatis dari Midtrans' })
@@ -58,7 +87,9 @@ export class OrdersController {
     return this.ordersService.processMidtransNotification(payload);
   }
 
-  // === 1. Route Validasi Tiket oleh Petugas ===
+  // =========================================================================
+  // 5. VALIDASI / SCAN TIKET PETUGAS
+  // =========================================================================
   @Post('validate-ticket')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verifikasi / Scan QR Code Tiket oleh Petugas' })
@@ -75,7 +106,9 @@ export class OrdersController {
     return this.ordersService.validateTicket(orderCode);
   }
 
-  // === 2. Route Ambil E-Ticket (QR Code Base64) ===
+  // =========================================================================
+  // 6. AMBIL E-TICKET (QR CODE BASE64)
+  // =========================================================================
   @Get(':id/ticket')
   @ApiOperation({
     summary:
@@ -85,12 +118,18 @@ export class OrdersController {
     return this.ordersService.getETicket(id);
   }
 
+  // =========================================================================
+  // 7. DETAIL PESANAN
+  // =========================================================================
   @Get(':id')
   @ApiOperation({ summary: 'Melihat detail satu pesanan berdasarkan ID' })
   async findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
   }
 
+  // =========================================================================
+  // 8. BATALKAN PESANAN
+  // =========================================================================
   @Post(':id/cancel')
   @ApiOperation({
     summary: 'Membatalkan pesanan dan mengembalikan kuota ticket',

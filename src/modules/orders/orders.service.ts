@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOnsiteOrderDto } from './dto/create-onsite-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -45,6 +46,19 @@ export class OrdersService {
     return `WST-${yy}${mm}${dd}-${randomStr}`;
   }
 
+  // Helper generator ticket code (12 karakter Crockford Base32)
+  private generateTicketCode(): string {
+    const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    let code = '';
+    for (let i = 0; i < 12; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  // =======================================================================
+  // 1. PEMBELIAN TIKET ONLINE (PUBLIC / TOURIST)
+  // =======================================================================
   async create(createOrderDto: CreateOrderDto, userId?: string) {
     const { destinationId, visitDate, items, buyer } = createOrderDto;
     const dateOfVisit = new Date(visitDate);
@@ -53,7 +67,7 @@ export class OrdersService {
     let buyerEmail = buyer?.email;
     let buyerPhone = buyer?.phone;
 
-    // 1. Jika User Sedang Login, ambil data profil user jika field buyer kosong
+    // A. Jika User Sedang Login, ambil profil user jika field buyer kosong
     if (userId) {
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!user) {
@@ -71,7 +85,7 @@ export class OrdersService {
       }
     }
 
-    // 2. Ambil data Destinasi
+    // B. Ambil data Destinasi
     const destination = await this.prisma.destination.findUnique({
       where: { id: destinationId },
     });
@@ -80,7 +94,7 @@ export class OrdersService {
       throw new UnprocessableEntityException('Destinasi tidak ditemukan.');
     }
 
-    // 3. Ambil data Tiket yang ingin dibeli
+    // C. Ambil data Tiket yang ingin dibeli
     const ticketTypeIds = items.map((item) => item.ticketTypeId);
     const ticketTypes = await this.prisma.ticketType.findMany({
       where: {
@@ -96,13 +110,11 @@ export class OrdersService {
       );
     }
 
-    // =======================================================================
-    // 4. MEMULAI PRISMA TRANSACTION
-    // =======================================================================
+    // D. Transaksi Prisma Database
     try {
       const order = await this.prisma.$transaction(
         async (tx) => {
-          // --- A. Pengecekan & Pengurangan Kuota ---
+          // Pengecekan & Pengurangan Kuota Inventori
           const sortedItems = [...items].sort((a, b) =>
             a.ticketTypeId.localeCompare(b.ticketTypeId),
           );
@@ -126,7 +138,7 @@ export class OrdersService {
             }
           }
 
-          // --- B. Persiapkan Data Pesanan ---
+          // Persiapkan Data Baris Pesanan
           let subtotal = 0;
           const orderItemsData = items.map((item) => {
             const ticketDetail = ticketTypes.find(
@@ -148,7 +160,7 @@ export class OrdersService {
           const totalAmount = subtotal;
           const orderCode = this.generateOrderCode();
 
-          // --- C. Simpan Order & Order Items (Expired 10 Menit) ---
+          // Simpan Order & Items (Expired 10 Menit)
           const newOrder = await tx.order.create({
             data: {
               orderCode: orderCode,
@@ -164,7 +176,7 @@ export class OrdersService {
               discountAmount: 0,
               serviceFee: 0,
               totalAmount: totalAmount,
-              expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 menit
+              expiresAt: new Date(Date.now() + 10 * 60 * 1000),
               items: {
                 create: orderItemsData,
               },
@@ -177,9 +189,7 @@ export class OrdersService {
         { timeout: 10000 },
       );
 
-      // =======================================================================
-      // 5. MINTA LINK PEMBAYARAN DARI MIDTRANS
-      // =======================================================================
+      // E. Minta Link Pembayaran dari Midtrans
       const midtransParams = {
         transaction_details: {
           order_id: order.id,
@@ -213,6 +223,153 @@ export class OrdersService {
     }
   }
 
+  // =======================================================================
+  // 2. PENJUALAN TIKET LOKET / ONSITE (MANAGER / STAFF)
+  // =======================================================================
+  async createOnsiteOrder(
+    createOnsiteOrderDto: CreateOnsiteOrderDto,
+    staffUserId: string,
+    destinationId: string,
+  ) {
+    const { items, paymentMethod, buyerName, buyerEmail, buyerPhone } =
+      createOnsiteOrderDto;
+
+    const todayStr = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Jakarta',
+    });
+    const visitDate = new Date(todayStr);
+
+    const name = buyerName || 'Pengunjung Loket';
+
+    const ticketTypeIds = items.map((i) => i.ticketTypeId);
+    const ticketTypes = await this.prisma.ticketType.findMany({
+      where: {
+        id: { in: ticketTypeIds },
+        destinationId,
+        isActive: true,
+      },
+    });
+
+    if (ticketTypes.length !== items.length) {
+      throw new UnprocessableEntityException(
+        'Satu atau lebih jenis tiket tidak valid atau tidak aktif.',
+      );
+    }
+
+    return await this.prisma.$transaction(
+      async (tx) => {
+        let subtotal = 0;
+        const orderItemsData = [];
+
+        // Update Kuota per Jenis Tiket
+        for (const item of items) {
+          const ticketDetail = ticketTypes.find((t) => t.id === item.ticketTypeId);
+          const lineTotal = ticketDetail.price * item.quantity;
+          subtotal += lineTotal;
+
+          orderItemsData.push({
+            ticketTypeId: item.ticketTypeId,
+            ticketName: ticketDetail.name,
+            unitPrice: ticketDetail.price,
+            quantity: item.quantity,
+            discountAmount: 0,
+            lineTotal,
+          });
+
+          await tx.$executeRaw`
+            INSERT INTO ticket_inventories (ticket_type_id, date, updated_at)
+            VALUES (${item.ticketTypeId}::uuid, ${visitDate}::date, now())
+            ON CONFLICT DO NOTHING;
+          `;
+
+          const inv = await tx.$queryRaw<{ sold: number }[]>`
+            UPDATE ticket_inventories ti
+            SET sold = ti.sold + ${item.quantity}, updated_at = now()
+            FROM ticket_types tt
+            WHERE ti.ticket_type_id = ${item.ticketTypeId}::uuid
+              AND ti.date = ${visitDate}::date
+              AND tt.id = ti.ticket_type_id
+              AND (ti.quota IS NULL OR ti.sold + ${item.quantity} <= ti.quota)
+            RETURNING ti.sold;
+          `;
+
+          if (inv.length === 0) {
+            throw new UnprocessableEntityException(
+              `Kuota jenis tiket ${ticketDetail.name} sudah habis hari ini.`,
+            );
+          }
+        }
+
+        // Simpan Order Berstatus PAID
+        const orderCode = this.generateOrderCode();
+        const order = await tx.order.create({
+          data: {
+            orderCode,
+            destinationId,
+            buyerName: name,
+            buyerEmail: buyerEmail || null,
+            buyerPhone: buyerPhone || null,
+            visitDate,
+            channel: 'ONSITE',
+            status: 'PAID',
+            subtotal,
+            discountAmount: 0,
+            serviceFee: 0,
+            totalAmount: subtotal,
+            paidAt: new Date(),
+            createdById: staffUserId,
+            items: { create: orderItemsData },
+          },
+          include: { items: true },
+        });
+
+        // Simpan Record Pembayaran
+        await tx.payment.create({
+          data: {
+            orderId: order.id,
+            provider: paymentMethod,
+            method: paymentMethod.toLowerCase(),
+            amount: subtotal,
+            status: 'SUCCESS',
+            paidAt: new Date(),
+            providerRef: `ONSITE-${Date.now()}-${order.id.slice(0, 8)}`,
+          },
+        });
+
+        // Terbitkan E-Ticket Langsung Per Pax
+        const ticketRecords = [];
+        for (const item of order.items) {
+          for (let i = 0; i < item.quantity; i++) {
+            ticketRecords.push({
+              orderId: order.id,
+              orderItemId: item.id,
+              destinationId,
+              ticketCode: this.generateTicketCode(),
+              visitDate,
+              status: 'ISSUED' as const,
+            });
+          }
+        }
+
+        await tx.ticket.createMany({ data: ticketRecords });
+
+        const tickets = await tx.ticket.findMany({ where: { orderId: order.id } });
+
+        return {
+          message: 'Penjualan loket berhasil diproses.',
+          data: {
+            order,
+            tickets,
+          },
+        };
+      },
+      { timeout: 10000 },
+    );
+  }
+
+  // =======================================================================
+  // 3. GET DAFTAR & DETAIL PESANAN
+  // =======================================================================
   async findAll(query: any) {
     const { userId, email, status } = query;
     const whereCondition: any = {};
@@ -259,7 +416,7 @@ export class OrdersService {
   }
 
   // =======================================================================
-  // WEBHOOK HANDLER UNTUK NOTIFIKASI MIDTRANS
+  // 4. WEBHOOK HANDLER NOTIFIKASI MIDTRANS
   // =======================================================================
   async processMidtransNotification(payload: any) {
     const {
@@ -271,21 +428,19 @@ export class OrdersService {
       signature_key: signatureKey,
     } = payload;
 
-    // 1. Verifikasi Signature Key (Mencegah Pemalsuan Notifikasi)
+    // Verifikasi Signature Key
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     const expectedSignature = crypto
       .createHash('sha512')
       .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
       .digest('hex');
 
-    // Tambahkan kondisi bypass agar bisa dites via Swagger/Postman
     const isBypass = signatureKey === 'bypass' || signatureKey === 'string';
 
     if (!isBypass && signatureKey !== expectedSignature) {
       throw new BadRequestException('Signature key dari Midtrans tidak valid.');
     }
 
-    // 2. Cari data Order di database
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
     });
@@ -298,12 +453,10 @@ export class OrdersService {
       });
     }
 
-    // 3. Idempotency Check: Jika order sudah PAID, kembalikan response sukses langsung
     if (order.status === 'PAID') {
       return { message: 'Status pesanan sudah PAID.' };
     }
 
-    // 4. Jika status sudah CANCELLED/EXPIRED dan Midtrans mengirimkan sinyal pembatalan, abaikan dengan aman
     if (
       order.status === 'CANCELLED' &&
       ['cancel', 'expire', 'deny'].includes(transactionStatus)
@@ -311,7 +464,6 @@ export class OrdersService {
       return { message: 'Pesanan sudah dibatalkan sebelumnya.' };
     }
 
-    // 5. Proses perubahan status transaksi
     if (
       transactionStatus === 'settlement' ||
       (transactionStatus === 'capture' && fraudStatus === 'accept')
@@ -333,6 +485,9 @@ export class OrdersService {
     return { message: `Status transaksi '${transactionStatus}' diterima.` };
   }
 
+  // =======================================================================
+  // 5. BATALKAN PESANAN & KEMBALIKAN KUOTA
+  // =======================================================================
   async cancelOrder(id: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: id },
@@ -351,7 +506,6 @@ export class OrdersService {
 
     try {
       const cancelledOrder = await this.prisma.$transaction(async (tx) => {
-        // Kembalikan kuota tiket yang sempat dikurangi saat pembuatan pesanan
         for (const item of order.items) {
           await tx.$queryRaw`
             UPDATE ticket_inventories
@@ -386,7 +540,9 @@ export class OrdersService {
     return `This action removes a #${id} order`;
   }
 
-  // Cron Job pembatalan pesanan kedaluwarsa setiap 1 menit
+  // =======================================================================
+  // 6. CRON JOB PEMBATALAN PESANAN KEDALUWARSA (TIAP 1 MENIT)
+  // =======================================================================
   @Cron(CronExpression.EVERY_MINUTE)
   async handleCronCancelExpiredOrders() {
     const expiredOrders = await this.prisma.order.findMany({
@@ -432,6 +588,9 @@ export class OrdersService {
     }
   }
 
+  // =======================================================================
+  // 7. GET E-TICKET & QR CODE
+  // =======================================================================
   async getETicket(id: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -479,6 +638,9 @@ export class OrdersService {
     };
   }
 
+  // =======================================================================
+  // 8. VALIDASI TIKET (SCANNER PETUGAS)
+  // =======================================================================
   async validateTicket(orderCode: string) {
     const order = await this.prisma.order.findUnique({
       where: { orderCode },

@@ -1,4 +1,4 @@
-// ===== Generator & datasource =====
+// ===== Generator & Datasource =====
 generator client {
   provider = "prisma-client-js"
 }
@@ -34,32 +34,57 @@ enum TokenType {
   EMAIL_CHANGE
 }
 
-// ===== Auth & user =====
-model User {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  email           String    @unique @db.VarChar(254)
-  passwordHash    String?   @map("password_hash")
-  fullName        String    @map("full_name") @db.VarChar(120)
-  phone           String    @unique @db.VarChar(20) // 👈 Nomor HP wajib & unik terhubung ke akun
-  avatarUrl       String?   @map("avatar_url")
-  birthDate       DateTime? @map("birth_date") @db.Date
-  city            String?   @db.VarChar(80)
-  role            UserRole  @default(TOURIST)
-  status          UserStatus @default(ACTIVE)
-  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  failedLoginCount Int      @default(0) @map("failed_login_count")
-  lockedUntil     DateTime? @map("locked_until") @db.Timestamptz(6)
-  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+enum DestinationStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  SUSPENDED
+}
 
-  identities           UserIdentity[]
-  authTokens           AuthToken[]
-  refreshTokens        RefreshToken[]
-  managedDestination   Destination?  
-  createdTicketTypes   TicketType[]   @relation("UserCreatedTickets")
-  orders               Order[]        // 👈 Relasi balik ke Order
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum TicketStatus {
+  ISSUED
+  USED
+  VOID
+  EXPIRED
+}
+
+// ===== Auth & User =====
+model User {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  email            String        @unique @db.VarChar(254)
+  passwordHash     String?       @map("password_hash")
+  fullName         String        @map("full_name") @db.VarChar(120)
+  phone            String?       @unique @db.VarChar(20)
+  avatarUrl        String?       @map("avatar_url")
+  birthDate        DateTime?     @map("birth_date") @db.Date
+  city             String?       @db.VarChar(80)
+  role             UserRole      @default(TOURIST)
+  status           UserStatus    @default(ACTIVE)
+  emailVerifiedAt  DateTime?     @map("email_verified_at") @db.Timestamptz(6)
+  failedLoginCount Int           @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?     @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt      DateTime?     @map("last_login_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  identities         UserIdentity[]
+  authTokens         AuthToken[]
+  refreshTokens      RefreshToken[]
+  managedDestination Destination?
+  createdTicketTypes TicketType[]   @relation("UserCreatedTickets")
+  orders             Order[]        @relation("OrderBuyer")
+  createdOrders      Order[]        @relation("OrderCreator")
+  checkedInTickets   Ticket[]       @relation("StaffCheckIns")
 
   @@index([role, status])
   @@map("users")
@@ -73,7 +98,7 @@ model UserIdentity {
   providerEmail  String?      @map("provider_email") @db.VarChar(254)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUserId])
   @@unique([userId, provider])
@@ -90,7 +115,7 @@ model AuthToken {
   usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
   @@map("auth_tokens")
@@ -108,9 +133,9 @@ model RefreshToken {
   replacedById String?       @unique @map("replaced_by_id") @db.Uuid
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
-  replaces     RefreshToken? @relation("TokenRotation")
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  replaces   RefreshToken? @relation("TokenRotation")
 
   @@index([userId])
   @@index([familyId])
@@ -119,21 +144,13 @@ model RefreshToken {
 
 // ===== Destinasi =====
 model Category {
-  id           Int           @id @default(autoincrement()) @db.SmallInt
-  name         String        @unique @db.VarChar(60)
-  slug         String        @unique @db.VarChar(80)
+  id   Int    @id @default(autoincrement()) @db.SmallInt
+  name String @unique @db.VarChar(60)
+  slug String @unique @db.VarChar(80)
 
-  destinations Destination[] 
+  destinations Destination[]
 
   @@map("categories")
-}
-
-enum DestinationStatus {
-  DRAFT
-  PENDING_REVIEW
-  PUBLISHED
-  REJECTED
-  SUSPENDED
 }
 
 model Destination {
@@ -158,82 +175,88 @@ model Destination {
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?         @map("deleted_at") @db.Timestamptz(6)
 
-  manager      User              @relation(fields: [managerId], references: [id])
-  category     Category          @relation(fields: [categoryId], references: [id])
-  ticketTypes  TicketType[]
-  orders       Order[]           // 👈 Relasi balik ke Order
+  manager     User         @relation(fields: [managerId], references: [id])
+  category    Category     @relation(fields: [categoryId], references: [id])
+  ticketTypes TicketType[]
+  orders      Order[]
+  tickets     Ticket[]
 
   @@index([status, province, city])
   @@index([categoryId])
   @@map("destinations")
 }
 
-// ===== Tiket & inventori =====
+// ===== Tiket & Inventori =====
 model TicketType {
-  id           String    @id @default(uuid(7)) @db.Uuid
-  destinationId String   @map("destination_id") @db.Uuid
-  name         String    @db.VarChar(100)
-  description  String?
-  price        Int        
-  dailyQuota   Int?      @map("daily_quota")
-  minPerOrder  Int       @default(1) @map("min_per_order") @db.SmallInt
-  maxPerOrder  Int       @default(10) @map("max_per_order") @db.SmallInt
-  salesStartAt DateTime? @map("sales_start_at") @db.Timestamptz(6)
-  salesEndAt   DateTime? @map("sales_end_at") @db.Timestamptz(6)
-  isActive     Boolean   @default(true) @map("is_active")
-  sortOrder    Int       @default(0) @map("sort_order") @db.SmallInt
-  createdById  String?   @map("created_by_id") @db.Uuid
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id            String    @id @default(uuid(7)) @db.Uuid
+  destinationId String    @map("destination_id") @db.Uuid
+  name          String    @db.VarChar(100)
+  description   String?
+  price         Int
+  dailyQuota    Int?      @map("daily_quota")
+  minPerOrder   Int       @default(1) @map("min_per_order") @db.SmallInt
+  maxPerOrder   Int       @default(10) @map("max_per_order") @db.SmallInt
+  salesStartAt  DateTime? @map("sales_start_at") @db.Timestamptz(6)
+  salesEndAt    DateTime? @map("sales_end_at") @db.Timestamptz(6)
+  isActive      Boolean   @default(true) @map("is_active")
+  sortOrder     Int       @default(0) @map("sort_order") @db.SmallInt
+  createdById   String?   @map("created_by_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   destination       Destination       @relation(fields: [destinationId], references: [id], onDelete: Cascade)
-  createdBy         User?             @relation("UserCreatedTickets", fields: [createdById], references: [id]) 
+  createdBy         User?             @relation("UserCreatedTickets", fields: [createdById], references: [id])
   ticketInventories TicketInventory[]
-  orderItems        OrderItem[]       // 👈 Relasi balik ke OrderItem
+  orderItems        OrderItem[]
 
   @@index([destinationId])
   @@map("ticket_types")
 }
 
 model TicketInventory {
-  id           String     @id @default(uuid(7)) @db.Uuid
-  ticketTypeId String     @map("ticket_type_id") @db.Uuid
-  date         DateTime   @db.Date
-  quota        Int        
-  sold         Int        @default(0) 
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String   @id @default(uuid(7)) @db.Uuid
+  ticketTypeId String   @map("ticket_type_id") @db.Uuid
+  date         DateTime @db.Date
+  quota        Int?
+  sold         Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
 
-  @@unique([ticketTypeId, date]) 
+  @@unique([ticketTypeId, date])
   @@map("ticket_inventories")
 }
 
 // ===== Transaksi Pesanan (Orders) =====
 model Order {
-  id             String      @id @default(uuid(7)) @db.Uuid
-  orderCode      String      @unique @map("order_code") @db.VarChar(50)
-  destinationId  String      @map("destination_id") @db.Uuid
-  userId         String?     @map("user_id") @db.Uuid
-  buyerName      String      @map("buyer_name") @db.VarChar(120)
-  buyerEmail     String      @map("buyer_email") @db.VarChar(254)
-  buyerPhone     String?     @map("buyer_phone") @db.VarChar(20)
-  visitDate      DateTime    @map("visit_date") @db.Date
-  channel        String      @default("ONLINE") @db.VarChar(20)
-  status         String      @default("PENDING_PAYMENT") @db.VarChar(30)
+  id             String    @id @default(uuid(7)) @db.Uuid
+  orderCode      String    @unique @map("order_code") @db.VarChar(50)
+  destinationId  String    @map("destination_id") @db.Uuid
+  userId         String?   @map("user_id") @db.Uuid
+  buyerName      String    @map("buyer_name") @db.VarChar(120)
+  buyerEmail     String?   @map("buyer_email") @db.VarChar(254)
+  buyerPhone     String?   @map("buyer_phone") @db.VarChar(20)
+  visitDate      DateTime  @map("visit_date") @db.Date
+  channel        String    @default("ONLINE") @db.VarChar(20)
+  status         String    @default("PENDING_PAYMENT") @db.VarChar(30)
   subtotal       Int
-  discountAmount Int         @default(0) @map("discount_amount")
-  serviceFee     Int         @default(0) @map("service_fee")
-  totalAmount    Int         @map("total_amount")
-  expiresAt      DateTime?   @map("expires_at") @db.Timestamptz(6)
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  discountAmount Int       @default(0) @map("discount_amount")
+  serviceFee     Int       @default(0) @map("service_fee")
+  totalAmount    Int       @map("total_amount")
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
+  paidAt         DateTime? @map("paid_at") @db.Timestamptz(6)
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user           User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  destination    Destination @relation(fields: [destinationId], references: [id])
-  items          OrderItem[]
+  user        User?       @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy   User?       @relation("OrderCreator", fields: [createdById], references: [id])
+  destination Destination @relation(fields: [destinationId], references: [id])
+  items       OrderItem[]
+  payments    Payment[]
+  tickets     Ticket[]
 
   @@index([userId])
   @@index([destinationId])
@@ -242,17 +265,65 @@ model Order {
 }
 
 model OrderItem {
-  id             String     @id @default(uuid(7)) @db.Uuid
-  orderId        String     @map("order_id") @db.Uuid
-  ticketTypeId   String     @map("ticket_type_id") @db.Uuid
-  ticketName     String     @map("ticket_name") @db.VarChar(100)
-  unitPrice      Int        @map("unit_price")
+  id             String @id @default(uuid(7)) @db.Uuid
+  orderId        String @map("order_id") @db.Uuid
+  ticketTypeId   String @map("ticket_type_id") @db.Uuid
+  ticketName     String @map("ticket_name") @db.VarChar(100)
+  unitPrice      Int    @map("unit_price")
   quantity       Int
-  discountAmount Int        @default(0) @map("discount_amount")
-  lineTotal      Int        @map("line_total")
+  discountAmount Int    @default(0) @map("discount_amount")
+  lineTotal      Int    @map("line_total")
 
-  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  ticketType     TicketType @relation(fields: [ticketTypeId], references: [id])
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id])
+  tickets    Ticket[]
 
   @@map("order_items")
+}
+
+// ===== Pembayaran (Payments) =====
+model Payment {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  orderId     String        @map("order_id") @db.Uuid
+  provider    String        @db.VarChar(30)
+  providerRef String?       @map("provider_ref") @db.VarChar(120)
+  method      String?       @db.VarChar(40)
+  amount      Int
+  status      PaymentStatus @default(PENDING)
+  checkoutUrl String?       @map("checkout_url")
+  rawResponse Json?         @map("raw_response")
+  paidAt      DateTime?     @map("paid_at") @db.Timestamptz(6)
+  refundedAt  DateTime?     @map("refunded_at") @db.Timestamptz(6)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRef])
+  @@index([orderId])
+  @@map("payments")
+}
+
+// ===== E-Ticket (Tickets) =====
+model Ticket {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  orderId       String       @map("order_id") @db.Uuid
+  orderItemId   String       @map("order_item_id") @db.Uuid
+  destinationId String       @map("destination_id") @db.Uuid
+  ticketCode    String       @unique @map("ticket_code") @db.VarChar(16)
+  visitDate     DateTime     @map("visit_date") @db.Date
+  status        TicketStatus @default(ISSUED)
+  usedAt        DateTime?    @map("used_at") @db.Timestamptz(6)
+  checkedInById String?      @map("checked_in_by_id") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  destination Destination @relation(fields: [destinationId], references: [id])
+  checkedInBy User?       @relation("StaffCheckIns", fields: [checkedInById], references: [id])
+
+  @@index([orderId])
+  @@index([destinationId, visitDate, status])
+  @@map("tickets")
 }
