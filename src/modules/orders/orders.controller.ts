@@ -3,7 +3,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOnsiteOrderDto } from './dto/create-onsite-order.dto';
 import { MidtransNotificationDto } from './dto/midtrans-notification.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiBody, ApiParam, } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Orders & E-Tickets')
@@ -88,21 +88,17 @@ export class OrdersController {
   }
 
   // =========================================================================
-  // 5. VALIDASI / SCAN TIKET PETUGAS
+  // 5. VALIDASI / SCAN TIKET PETUGAS (DILAKUKAN DENGAN METHOD GET)
   // =========================================================================
-  @Post('validate-ticket')
+  @Get('validate-ticket/:orderCode') // 👈 2. Ubah dari @Post ke @Get dengan :orderCode
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verifikasi / Scan QR Code Tiket oleh Petugas' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        orderCode: { type: 'string', example: 'WST-261016-A1B2C3' },
-      },
-      required: ['orderCode'],
-    },
+  @ApiParam({
+    name: 'orderCode',
+    description: 'Kode Pesanan / Tiket',
+    example: 'WST-261019-ZJS0LK',
   })
-  async validateTicket(@Body('orderCode') orderCode: string) {
+  async validateTicket(@Param('orderCode') orderCode: string) { // 👈 3. Ambil dari @Param
     return this.ordersService.validateTicket(orderCode);
   }
 
