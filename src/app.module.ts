@@ -9,6 +9,7 @@ import { DestinationsModule } from './modules/destinations/destinations.module';
 import { TicketTypesModule } from './modules/ticket-types/ticket-types.module';
 import { TicketInventoriesModule } from './modules/ticket-inventories/ticket-inventories.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { CapacityModule } from './modules/capacity/capacity.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { OrdersModule } from './modules/orders/orders.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    CapacityModule,
     
     // Konfigurasi MailerModule dengan Gmail
     MailerModule.forRootAsync({

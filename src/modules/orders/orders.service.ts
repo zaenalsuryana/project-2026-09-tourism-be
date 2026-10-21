@@ -588,52 +588,52 @@ export class OrdersService {
     }
   }
 
-  // =======================================================================
-  // 7. GET E-TICKET & QR CODE
-  // =======================================================================
+  // =========================================================================
+  // AMBIL DATA E-TICKET (QR CODE & DETAIL)
+  // =========================================================================
   async getETicket(id: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
         destination: true,
-        items: true,
+        items: {
+          include: {
+            ticketType: true,
+          },
+        },
       },
     });
 
     if (!order) {
-      throw new NotFoundException(`Pesanan dengan ID ${id} tidak ditemukan.`);
+      throw new NotFoundException('Pesanan tidak ditemukan');
     }
 
     if (order.status !== 'PAID') {
       throw new BadRequestException(
-        `E-Ticket belum dapat diterbitkan karena status pesanan saat ini adalah ${order.status}. Pembayaran harus 'PAID' terlebih dahulu.`,
+        'E-Ticket hanya dapat diakses untuk pesanan yang sudah lunas (PAID)',
       );
     }
 
-    const qrPayload = JSON.stringify({
-      orderId: order.id,
-      orderCode: order.orderCode,
-      visitDate: order.visitDate,
-      buyerName: order.buyerName,
-    });
-
-    const qrCodeBase64 = await QRCode.toDataURL(qrPayload, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
-      width: 300,
-    });
+    // Generasi Gambar QR Code dalam format String Base64
+    const qrCodeUrl = await QRCode.toDataURL(order.orderCode);
 
     return {
       message: 'Berhasil mengambil E-Ticket',
       data: {
         orderCode: order.orderCode,
-        destinationName: order.destination.name,
+        destinationName: order.destination?.name || '-',
         visitDate: order.visitDate,
-        buyerName: order.buyerName,
-        buyerEmail: order.buyerEmail,
-        buyerPhone: order.buyerPhone,
-        items: order.items,
-        qrCodeUrl: qrCodeBase64,
+        buyerName: order.buyerName || 'Pengunjung Loket',
+        buyerEmail: order.buyerEmail || null,
+        buyerPhone: order.buyerPhone || null,
+        // 🔹 PERUBAHAN DI SINI: Filter item agar bersih dari ID internal database
+        items: order.items.map((item) => ({
+          ticketName: item.ticketType?.name || 'Tiket',
+          quantity: item.quantity,
+          unitPrice: Number(item.unitPrice),
+          lineTotal: Number(item.lineTotal),
+        })),
+        qrCodeUrl,
       },
     };
   }
