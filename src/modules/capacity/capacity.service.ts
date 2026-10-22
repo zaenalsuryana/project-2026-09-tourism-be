@@ -201,4 +201,133 @@ export class CapacityService {
       },
     };
   }
+
+  // 4. Kalender Keramaian Publik untuk Wisatawan
+  async getPublicCrowd(
+    slug: string,
+    startDateStr?: string,
+    endDateStr?: string,
+  ) {
+    const dest = await this.prisma.destination.findUnique({
+      where: { slug },
+    });
+
+    if (!dest) {
+      throw new NotFoundException('Destinasi tidak ditemukan');
+    }
+
+    const todayStr = new Date().toLocaleDateString('sv-SE', {
+      timeZone: 'Asia/Jakarta',
+    });
+
+    const start = startDateStr ? new Date(startDateStr) : new Date(todayStr);
+    const end = endDateStr
+      ? new Date(endDateStr)
+      : new Date(new Date(start).setDate(start.getDate() + 6)); // Default rentang 7 hari
+
+    // 1. Ambil data dari tabel okupansi harian
+    const occupancies = await this.prisma.destinationDailyOccupancy.findMany({
+      where: {
+        destinationId: dest.id,
+        visitDate: {
+          gte: start,
+          lte: end,
+        },
+      },
+    });
+
+    const occupancyMap = new Map(
+      occupancies.map((o) => [
+        o.visitDate.toISOString().split('T')[0],
+        (o.sold || 0) + (o.reserved || 0),
+      ]),
+    );
+
+    // 2. Ambil data pesanan berstatus PAID pada rentang tanggal tersebut
+    const paidOrders = await this.prisma.order.findMany({
+      where: {
+        destinationId: dest.id,
+        visitDate: {
+          gte: start,
+          lte: end,
+        },
+        status: {
+          in: ['PAID', 'SUCCESS', 'COMPLETED'],
+        },
+      },
+      select: {
+        visitDate: true,
+        items: {
+          select: {
+            quantity: true,
+          },
+        },
+      },
+    });
+
+    // Agregasi jumlah tiket dari pesanan PAID per tanggal kunjungan
+    const orderOccupancyMap = new Map<string, number>();
+    paidOrders.forEach((ord) => {
+      const dateKey = ord.visitDate.toISOString().split('T')[0];
+      const totalQty = ord.items.reduce((sum, item) => sum + item.quantity, 0);
+      orderOccupancyMap.set(
+        dateKey,
+        (orderOccupancyMap.get(dateKey) || 0) + totalQty,
+      );
+    });
+
+    const thresholds =
+      dest.crowdThresholdUnit &&
+      dest.crowdModerateFrom !== null &&
+      dest.crowdBusyFrom !== null &&
+      dest.crowdVeryBusyFrom !== null
+        ? ([
+            dest.crowdModerateFrom,
+            dest.crowdBusyFrom,
+            dest.crowdVeryBusyFrom,
+          ] as [number, number, number])
+        : null;
+
+    const calendar = [];
+    const curr = new Date(start);
+
+    while (curr <= end) {
+      const dateStr = curr.toISOString().split('T')[0];
+      
+      // Ambil nilai tertinggi dari tabel okupansi atau hitungan pesanan PAID
+      const dailyOccupancyVal = occupancyMap.get(dateStr) || 0;
+      const orderVal = orderOccupancyMap.get(dateStr) || 0;
+      const occupied = Math.max(dailyOccupancyVal, orderVal);
+
+      const crowdInfo = resolveCrowd({
+        occupied,
+        limit: dest.dailyVisitorLimit,
+        referenceCapacity: dest.crowdReferenceCapacity,
+        thresholdUnit: dest.crowdThresholdUnit,
+        thresholds,
+      });
+
+      calendar.push({
+        date: dateStr,
+        occupied,
+        remaining: crowdInfo.remaining,
+        capacity: crowdInfo.capacity,
+        crowdLevel: crowdInfo.level,
+        crowdLabel: crowdInfo.label,
+        percentage: crowdInfo.percentage,
+      });
+
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    return {
+      message: 'Berhasil mengambil kalender keramaian destinasi',
+      data: {
+        destinationName: dest.name,
+        slug: dest.slug,
+        dailyVisitorLimit: dest.dailyVisitorLimit,
+        calendar,
+      },
+    };
+  }
 }

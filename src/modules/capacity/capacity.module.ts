@@ -1,15 +1,12 @@
 import { Module } from '@nestjs/common';
 import { CapacityService } from './capacity.service';
 import { CapacityController } from './capacity.controller';
-
-// 🔹 Import AuthModule agar JwtService & JwtAuthGuard tersedia di CapacityModule
+import { CapacityPublicController } from './capacity-public.controller';
 import { AuthModule } from '../auth/auth.module'; 
 
 @Module({
-  imports: [
-    AuthModule, // 👈 Tambahkan di sini
-  ],
-  controllers: [CapacityController],
+  imports: [AuthModule],
+  controllers: [CapacityController, CapacityPublicController],
   providers: [CapacityService],
   exports: [CapacityService],
 })
