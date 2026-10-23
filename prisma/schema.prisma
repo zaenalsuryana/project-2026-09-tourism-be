@@ -159,42 +159,43 @@ model Category {
 }
 
 model Destination {
-  id                     String              @id @default(uuid(7)) @db.Uuid
-  managerId              String              @unique @map("manager_id") @db.Uuid
-  categoryId             Int                 @map("category_id") @db.SmallInt
-  name                   String              @db.VarChar(150)
-  slug                   String              @unique @db.VarChar(170)
+  id                     String                      @id @default(uuid(7)) @db.Uuid
+  managerId              String                      @unique @map("manager_id") @db.Uuid
+  categoryId             Int                         @map("category_id") @db.SmallInt
+  name                   String                      @db.VarChar(150)
+  slug                   String                      @unique @db.VarChar(170)
   description            String
   address                String
-  province               String              @db.VarChar(80)
-  city                   String              @db.VarChar(80)
-  latitude               Decimal?            @db.Decimal(9, 6)
-  longitude              Decimal?            @db.Decimal(9, 6)
-  contactPhone           String?             @map("contact_phone") @db.VarChar(20)
-  contactEmail           String?             @map("contact_email") @db.VarChar(254)
-  facilities             String[]            @default([])
-  status                 DestinationStatus   @default(DRAFT)
-  isSalesOpen            Boolean             @default(true) @map("is_sales_open")
-  statusReason           String?             @map("status_reason")
+  province               String                      @db.VarChar(80)
+  city                   String                      @db.VarChar(80)
+  latitude               Decimal?                    @db.Decimal(9, 6)
+  longitude              Decimal?                    @db.Decimal(9, 6)
+  contactPhone           String?                     @map("contact_phone") @db.VarChar(20)
+  contactEmail           String?                     @map("contact_email") @db.VarChar(254)
+  facilities             String[]                    @default([])
+  status                 DestinationStatus           @default(DRAFT)
+  isSalesOpen            Boolean                     @default(true) @map("is_sales_open")
+  statusReason           String?                     @map("status_reason")
   
   // 🔹 Kapasitas & Status Keramaian
-  dailyVisitorLimit      Int?                @map("daily_visitor_limit")
-  crowdReferenceCapacity Int?                @map("crowd_reference_capacity")
-  crowdThresholdUnit     CrowdThresholdUnit? @map("crowd_threshold_unit")
-  crowdModerateFrom      Int?                @map("crowd_moderate_from")
-  crowdBusyFrom          Int?                @map("crowd_busy_from")
-  crowdVeryBusyFrom      Int?                @map("crowd_very_busy_from")
+  dailyVisitorLimit      Int?                        @map("daily_visitor_limit")
+  crowdReferenceCapacity Int?                        @map("crowd_reference_capacity")
+  crowdThresholdUnit     CrowdThresholdUnit?         @map("crowd_threshold_unit")
+  crowdModerateFrom      Int?                        @map("crowd_moderate_from")
+  crowdBusyFrom          Int?                        @map("crowd_busy_from")
+  crowdVeryBusyFrom      Int?                        @map("crowd_very_busy_from")
 
-  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt              DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt              DateTime?                   @map("deleted_at") @db.Timestamptz(6)
 
-  manager          User                        @relation(fields: [managerId], references: [id])
-  category         Category                    @relation(fields: [categoryId], references: [id])
-  ticketTypes      TicketType[]
-  orders           Order[]
-  tickets          Ticket[]
-  dailyOccupancies DestinationDailyOccupancy[]
+  manager           User                        @relation(fields: [managerId], references: [id])
+  category          Category                    @relation(fields: [categoryId], references: [id])
+  ticketTypes       TicketType[]
+  orders            Order[]
+  tickets           Ticket[]
+  dailyOccupancies  DestinationDailyOccupancy[]
+  capacityOverrides DestinationCapacityOverride[] // 👈 Tambahkan baris ini di sini!
 
   @@index([status, province, city])
   @@index([categoryId])
@@ -355,4 +356,20 @@ model Ticket {
   @@index([orderId])
   @@index([destinationId, visitDate, status])
   @@map("tickets")
+}
+
+model DestinationCapacityOverride {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  destinationId     String      @map("destination_id") @db.Uuid
+  overrideDate      DateTime    @map("override_date") @db.Date
+  dailyVisitorLimit Int         @map("daily_visitor_limit")
+  reason            String?
+
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  destination       Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  @@unique([destinationId, overrideDate])
+  @@map("destination_capacity_overrides")
 }

@@ -1,17 +1,17 @@
-import { Controller, Get, Put, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards, Req, ParseUUIDPipe, } from '@nestjs/common';
 import { CapacityService } from './capacity.service';
 import { UpdateCapacityDto } from './dto/update-capacity.dto';
+import { CreateCapacityOverrideDto } from './dto/create-capacity-override.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
-// Import Guards & Decorators agar sesuai dengan struktur modul Auth & Common
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Capacity & Crowd Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard) // Memastikan token JWT diproses dan role diverifikasi
-@Roles('MANAGER') // Menyoroti bahwa endpoint ini khusus untuk akun MANAGER
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('MANAGER')
 @Controller('manager')
 export class CapacityController {
   constructor(private readonly capacityService: CapacityService) {}
@@ -45,5 +45,52 @@ export class CapacityController {
     const userId = req.user?.id || req.user?.sub || req.user?.userId;
 
     return this.capacityService.getTodayDashboard(destinationId, userId);
+  }
+
+  @Get('destination/capacity-overrides')
+  @ApiOperation({
+    summary: 'Melihat daftar batas kuota khusus tanggal (Overrides)',
+  })
+  async getCapacityOverrides(@Req() req: any) {
+    const destinationId = req.user?.destinationId || req.user?.did;
+    const userId = req.user?.id || req.user?.sub || req.user?.userId;
+
+    return this.capacityService.getCapacityOverrides(destinationId, userId);
+  }
+
+  @Post('destination/capacity-overrides')
+  @ApiOperation({
+    summary: 'Menambah atau memperbarui batas kuota khusus tanggal tertentu',
+  })
+  async upsertCapacityOverride(
+    @Req() req: any,
+    @Body() dto: CreateCapacityOverrideDto,
+  ) {
+    const destinationId = req.user?.destinationId || req.user?.did;
+    const userId = req.user?.id || req.user?.sub || req.user?.userId;
+
+    return this.capacityService.upsertCapacityOverride(
+      dto,
+      destinationId,
+      userId,
+    );
+  }
+
+  @Delete('destination/capacity-overrides/:id')
+  @ApiOperation({
+    summary: 'Menghapus batas kuota khusus tanggal',
+  })
+  async deleteCapacityOverride(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const destinationId = req.user?.destinationId || req.user?.did;
+    const userId = req.user?.id || req.user?.sub || req.user?.userId;
+
+    return this.capacityService.deleteCapacityOverride(
+      id,
+      destinationId,
+      userId,
+    );
   }
 }

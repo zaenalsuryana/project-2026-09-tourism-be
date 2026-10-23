@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { UpdateCapacityDto } from './dto/update-capacity.dto';
+import { CreateCapacityOverrideDto } from './dto/create-capacity-override.dto'; // 👈 Import ini
 import { resolveCrowd } from './crowd.util';
 
 @Injectable()
@@ -223,9 +224,8 @@ export class CapacityService {
     const start = startDateStr ? new Date(startDateStr) : new Date(todayStr);
     const end = endDateStr
       ? new Date(endDateStr)
-      : new Date(new Date(start).setDate(start.getDate() + 6)); // Default rentang 7 hari
+      : new Date(new Date(start).setDate(start.getDate() + 6));
 
-    // 1. Ambil data dari tabel okupansi harian
     const occupancies = await this.prisma.destinationDailyOccupancy.findMany({
       where: {
         destinationId: dest.id,
@@ -243,7 +243,6 @@ export class CapacityService {
       ]),
     );
 
-    // 2. Ambil data pesanan berstatus PAID pada rentang tanggal tersebut
     const paidOrders = await this.prisma.order.findMany({
       where: {
         destinationId: dest.id,
@@ -265,7 +264,6 @@ export class CapacityService {
       },
     });
 
-    // Agregasi jumlah tiket dari pesanan PAID per tanggal kunjungan
     const orderOccupancyMap = new Map<string, number>();
     paidOrders.forEach((ord) => {
       const dateKey = ord.visitDate.toISOString().split('T')[0];
@@ -294,7 +292,6 @@ export class CapacityService {
     while (curr <= end) {
       const dateStr = curr.toISOString().split('T')[0];
       
-      // Ambil nilai tertinggi dari tabel okupansi atau hitungan pesanan PAID
       const dailyOccupancyVal = occupancyMap.get(dateStr) || 0;
       const orderVal = orderOccupancyMap.get(dateStr) || 0;
       const occupied = Math.max(dailyOccupancyVal, orderVal);
@@ -328,6 +325,80 @@ export class CapacityService {
         dailyVisitorLimit: dest.dailyVisitorLimit,
         calendar,
       },
+    };
+  }
+
+  // 5. Ambil Daftar Capacity Overrides
+  async getCapacityOverrides(destinationId?: string, userId?: string) {
+    const dest = await this.findDestination(destinationId, userId);
+
+    const overrides = await this.prisma.destinationCapacityOverride.findMany({
+      where: { destinationId: dest.id }, // 👈 Fixed typo: destinationId
+      orderBy: { overrideDate: 'asc' },
+    });
+
+    return {
+      message: 'Berhasil mengambil daftar batas kuota khusus',
+      data: overrides,
+    };
+  }
+
+  // 6. Simpan / Update Capacity Override
+  async upsertCapacityOverride(
+    dto: CreateCapacityOverrideDto,
+    destinationId?: string,
+    userId?: string,
+  ) {
+    const dest = await this.findDestination(destinationId, userId);
+    const dateObj = new Date(dto.overrideDate);
+
+    const override = await this.prisma.destinationCapacityOverride.upsert({
+      where: {
+        destinationId_overrideDate: {
+          destinationId: dest.id,
+          overrideDate: dateObj,
+        },
+      },
+      update: {
+        dailyVisitorLimit: dto.dailyVisitorLimit,
+        reason: dto.reason,
+      },
+      create: {
+        destinationId: dest.id,
+        overrideDate: dateObj,
+        dailyVisitorLimit: dto.dailyVisitorLimit,
+        reason: dto.reason,
+      },
+    });
+
+    return {
+      message: 'Berhasil menyimpan batas kuota khusus tanggal',
+      data: override,
+    };
+  }
+
+  // 7. Hapus Capacity Override
+  async deleteCapacityOverride(
+    id: string,
+    destinationId?: string,
+    userId?: string,
+  ) {
+    const dest = await this.findDestination(destinationId, userId);
+
+    const override = await this.prisma.destinationCapacityOverride.findFirst({
+      where: { id, destinationId: dest.id },
+    });
+
+    if (!override) {
+      throw new NotFoundException('Data kuota khusus tidak ditemukan');
+    }
+
+    await this.prisma.destinationCapacityOverride.delete({
+      where: { id },
+    });
+
+    return {
+      message: 'Berhasil menghapus batas kuota khusus',
     };
   }
 }
