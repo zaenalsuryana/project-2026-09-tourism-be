@@ -60,7 +60,7 @@ export class OrdersService {
   // 1. PEMBELIAN TIKET ONLINE (PUBLIC / TOURIST)
   // =======================================================================
   async create(createOrderDto: CreateOrderDto, userId?: string) {
-    const { destinationId, visitDate, items, buyer } = createOrderDto;
+    const { destinationId, visitDate, items, buyer, discountCode } = createOrderDto;
     const dateOfVisit = new Date(visitDate);
 
     let buyerName = buyer?.name;
@@ -110,7 +110,83 @@ export class OrdersService {
       );
     }
 
-    // D. Transaksi Prisma Database
+    // D. Hitung Subtotal Awal & Validasi Diskon (Jika ada)
+    let subtotal = 0;
+    const orderItemsData = items.map((item) => {
+      const ticketDetail = ticketTypes.find(
+        (t) => t.id === item.ticketTypeId,
+      );
+      const lineTotal = ticketDetail.price * item.quantity;
+      subtotal += lineTotal;
+
+      return {
+        ticketTypeId: item.ticketTypeId,
+        ticketName: ticketDetail.name,
+        unitPrice: ticketDetail.price,
+        quantity: item.quantity,
+        discountAmount: 0,
+        lineTotal: lineTotal,
+      };
+    });
+
+    let discountValue = 0;
+    let appliedDiscountId: string | null = null;
+
+    if (discountCode) {
+      const discount = await this.prisma.discount.findFirst({
+        where: {
+          code: discountCode.trim().toUpperCase(),
+          destinationId: destination.id,
+          isActive: true,
+        },
+      });
+
+      if (!discount) {
+        throw new BadRequestException('Kode voucher diskon tidak valid atau tidak ditemukan.');
+      }
+
+      // Validasi Tanggal Berlaku Diskon
+      const now = new Date();
+      if (discount.startAt && now < discount.startAt) {
+        throw new BadRequestException('Voucher diskon belum mulai berlaku.');
+      }
+      if (discount.endAt && now > discount.endAt) {
+        throw new BadRequestException('Voucher diskon sudah kedaluwarsa.');
+      }
+
+      // Validasi Kuota Diskon
+      if (discount.quota !== null && discount.usedCount >= discount.quota) {
+        throw new BadRequestException('Kuota penggunaan voucher diskon sudah habis.');
+      }
+
+      // Validasi Minimal Order
+      if (discount.minOrderAmount && subtotal < discount.minOrderAmount) {
+        throw new BadRequestException(
+          `Subtotal kurang dari minimum order untuk diskon ini (Min. Rp ${discount.minOrderAmount})`,
+        );
+      }
+
+      // Hitung Besar Potongan
+      if (discount.type === 'PERCENT') {
+        let calculatedDiscount = (subtotal * discount.value) / 100;
+        if (discount.maxDiscountAmount && calculatedDiscount > discount.maxDiscountAmount) {
+          calculatedDiscount = discount.maxDiscountAmount;
+        }
+        discountValue = Math.round(calculatedDiscount);
+      } else if (discount.type === 'FIXED') {
+        discountValue = discount.value;
+        if (discountValue > subtotal) {
+          discountValue = subtotal; // Potongan tidak boleh melebihi subtotal
+        }
+      }
+
+      appliedDiscountId = discount.id;
+    }
+
+    const totalAmount = subtotal - discountValue;
+    const orderCode = this.generateOrderCode();
+
+    // E. Transaksi Prisma Database
     try {
       const order = await this.prisma.$transaction(
         async (tx) => {
@@ -138,28 +214,6 @@ export class OrdersService {
             }
           }
 
-          // Persiapkan Data Baris Pesanan
-          let subtotal = 0;
-          const orderItemsData = items.map((item) => {
-            const ticketDetail = ticketTypes.find(
-              (t) => t.id === item.ticketTypeId,
-            );
-            const lineTotal = ticketDetail.price * item.quantity;
-            subtotal += lineTotal;
-
-            return {
-              ticketTypeId: item.ticketTypeId,
-              ticketName: ticketDetail.name,
-              unitPrice: ticketDetail.price,
-              quantity: item.quantity,
-              discountAmount: 0,
-              lineTotal: lineTotal,
-            };
-          });
-
-          const totalAmount = subtotal;
-          const orderCode = this.generateOrderCode();
-
           // Simpan Order & Items (Expired 10 Menit)
           const newOrder = await tx.order.create({
             data: {
@@ -173,10 +227,11 @@ export class OrdersService {
               channel: 'ONLINE',
               status: 'PENDING_PAYMENT',
               subtotal: subtotal,
-              discountAmount: 0,
+              discountAmount: discountValue,
               serviceFee: 0,
               totalAmount: totalAmount,
               expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+              discountId: appliedDiscountId, // <--- DISINI DISCOUNT ID DISIMPAN
               items: {
                 create: orderItemsData,
               },
@@ -189,7 +244,7 @@ export class OrdersService {
         { timeout: 10000 },
       );
 
-      // E. Minta Link Pembayaran dari Midtrans
+      // F. Minta Link Pembayaran dari Midtrans
       const midtransParams = {
         transaction_details: {
           order_id: order.id,
@@ -216,7 +271,7 @@ export class OrdersService {
         paymentToken: midtransTransaction.token,
       };
     } catch (error) {
-      if (error instanceof UnprocessableEntityException) {
+      if (error instanceof UnprocessableEntityException || error instanceof BadRequestException) {
         throw error;
       }
       throw error;
@@ -468,11 +523,31 @@ export class OrdersService {
       transactionStatus === 'settlement' ||
       (transactionStatus === 'capture' && fraudStatus === 'accept')
     ) {
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: { status: 'PAID' },
+      // Ketika pembayaran sukses (PAID), update status & increment usedCount kuota diskon jika ada
+      await this.prisma.$transaction(async (tx) => {
+        const targetOrder = await tx.order.findUnique({
+          where: { id: orderId },
+        });
+
+        await tx.order.update({
+          where: { id: orderId },
+          data: { status: 'PAID' },
+        });
+
+        // Jika order ini menggunakan diskon, increment usedCount pada diskon tersebut
+        if (targetOrder && targetOrder.discountId) {
+          await tx.discount.update({
+            where: { id: targetOrder.discountId },
+            data: {
+              usedCount: {
+                increment: 1,
+              },
+            },
+          });
+        }
       });
-      return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans.' };
+
+      return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans dan kuota diskon diperbarui.' };
     } else if (
       ['cancel', 'expire', 'deny'].includes(transactionStatus)
     ) {
@@ -626,7 +701,6 @@ export class OrdersService {
         buyerName: order.buyerName || 'Pengunjung Loket',
         buyerEmail: order.buyerEmail || null,
         buyerPhone: order.buyerPhone || null,
-        // 🔹 PERUBAHAN DI SINI: Filter item agar bersih dari ID internal database
         items: order.items.map((item) => ({
           ticketName: item.ticketType?.name || 'Tiket',
           quantity: item.quantity,

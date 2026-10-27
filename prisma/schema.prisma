@@ -64,23 +64,23 @@ enum TicketStatus {
 
 // ===== Auth & User =====
 model User {
-  id               String    @id @default(uuid(7)) @db.Uuid
-  email            String    @unique @db.VarChar(254)
-  passwordHash     String?   @map("password_hash")
-  fullName         String    @map("full_name") @db.VarChar(120)
-  phone            String?   @unique @db.VarChar(20)
-  avatarUrl        String?   @map("avatar_url")
-  birthDate        DateTime? @map("birth_date") @db.Date
-  city             String?   @db.VarChar(80)
-  role             UserRole  @default(TOURIST)
-  status           UserStatus @default(ACTIVE)
-  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  failedLoginCount Int       @default(0) @map("failed_login_count")
-  lockedUntil      DateTime? @map("locked_until") @db.Timestamptz(6)
-  lastLoginAt      DateTime? @map("last_login_at") @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id               String       @id @default(uuid(7)) @db.Uuid
+  email            String       @unique @db.VarChar(254)
+  passwordHash     String?      @map("password_hash")
+  fullName         String       @map("full_name") @db.VarChar(120)
+  phone            String?      @unique @db.VarChar(20)
+  avatarUrl        String?      @map("avatar_url")
+  birthDate        DateTime?    @map("birth_date") @db.Date
+  city             String?      @db.VarChar(80)
+  role             UserRole     @default(TOURIST)
+  status           UserStatus   @default(ACTIVE)
+  emailVerifiedAt  DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  failedLoginCount Int          @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?    @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt      DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
   identities         UserIdentity[]
   authTokens         AuthToken[]
@@ -127,20 +127,20 @@ model AuthToken {
 }
 
 model RefreshToken {
-  id           String    @id @default(uuid(7)) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  familyId     String    @map("family_id") @db.Uuid
-  tokenHash    String    @unique @map("token_hash") @db.Char(64)
-  userAgent    String?   @map("user_agent")
-  ipAddress    String?   @map("ip_address") @db.Inet
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
-  replacedById String?   @unique @map("replaced_by_id") @db.Uuid
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String        @id @default(uuid(7)) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  familyId     String        @map("family_id") @db.Uuid
+  tokenHash    String        @unique @map("token_hash") @db.Char(64)
+  userAgent    String?       @map("user_agent")
+  ipAddress    String?       @map("ip_address") @db.Inet
+  expiresAt    DateTime      @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime?     @map("revoked_at") @db.Timestamptz(6)
+  replacedById String?       @unique @map("replaced_by_id") @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
-  replaces   RefreshToken? @relation("TokenRotation")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  replaces     RefreshToken? @relation("TokenRotation")
 
   @@index([userId])
   @@index([familyId])
@@ -159,44 +159,44 @@ model Category {
 }
 
 model Destination {
-  id                     String                      @id @default(uuid(7)) @db.Uuid
-  managerId              String                      @unique @map("manager_id") @db.Uuid
-  categoryId             Int                         @map("category_id") @db.SmallInt
-  name                   String                      @db.VarChar(150)
-  slug                   String                      @unique @db.VarChar(170)
+  id                     String                    @id @default(uuid(7)) @db.Uuid
+  managerId              String                    @unique @map("manager_id") @db.Uuid
+  categoryId             Int                       @map("category_id") @db.SmallInt
+  name                   String                    @db.VarChar(150)
+  slug                   String                    @unique @db.VarChar(170)
   description            String
   address                String
-  province               String                      @db.VarChar(80)
-  city                   String                      @db.VarChar(80)
-  latitude               Decimal?                    @db.Decimal(9, 6)
-  longitude              Decimal?                    @db.Decimal(9, 6)
-  contactPhone           String?                     @map("contact_phone") @db.VarChar(20)
-  contactEmail           String?                     @map("contact_email") @db.VarChar(254)
-  facilities             String[]                    @default([])
-  status                 DestinationStatus           @default(DRAFT)
-  isSalesOpen            Boolean                     @default(true) @map("is_sales_open")
-  statusReason           String?                     @map("status_reason")
+  province               String                    @db.VarChar(80)
+  city                   String                    @db.VarChar(80)
+  latitude               Decimal?                  @db.Decimal(9, 6)
+  longitude              Decimal?                  @db.Decimal(9, 6)
+  contactPhone           String?                   @map("contact_phone") @db.VarChar(20)
+  contactEmail           String?                   @map("contact_email") @db.VarChar(254)
+  facilities             String[]                  @default([])
+  status                 DestinationStatus         @default(DRAFT)
+  isSalesOpen            Boolean                   @default(true) @map("is_sales_open")
+  statusReason           String?                   @map("status_reason")
   
   // 🔹 Kapasitas & Status Keramaian
-  dailyVisitorLimit      Int?                        @map("daily_visitor_limit")
-  crowdReferenceCapacity Int?                        @map("crowd_reference_capacity")
-  crowdThresholdUnit     CrowdThresholdUnit?         @map("crowd_threshold_unit")
-  crowdModerateFrom      Int?                        @map("crowd_moderate_from")
-  crowdBusyFrom          Int?                        @map("crowd_busy_from")
-  crowdVeryBusyFrom      Int?                        @map("crowd_very_busy_from")
+  dailyVisitorLimit      Int?                      @map("daily_visitor_limit")
+  crowdReferenceCapacity Int?                      @map("crowd_reference_capacity")
+  crowdThresholdUnit     CrowdThresholdUnit?       @map("crowd_threshold_unit")
+  crowdModerateFrom      Int?                      @map("crowd_moderate_from")
+  crowdBusyFrom          Int?                      @map("crowd_busy_from")
+  crowdVeryBusyFrom      Int?                      @map("crowd_very_busy_from")
 
-  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt              DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt              DateTime?                 @map("deleted_at") @db.Timestamptz(6)
 
-  manager           User                        @relation(fields: [managerId], references: [id])
-  category          Category                    @relation(fields: [categoryId], references: [id])
-  ticketTypes       TicketType[]
-  orders            Order[]
-  tickets           Ticket[]
-  dailyOccupancies  DestinationDailyOccupancy[]
-  capacityOverrides DestinationCapacityOverride[] // 👈 Tambahkan baris ini di sini!
-  discounts          Discount[]
+  manager                User                      @relation(fields: [managerId], references: [id])
+  category               Category                  @relation(fields: [categoryId], references: [id])
+  ticketTypes            TicketType[]
+  orders                 Order[]
+  tickets                Ticket[]
+  dailyOccupancies       DestinationDailyOccupancy[]
+  capacityOverrides      DestinationCapacityOverride[]
+  discounts              Discount[]
 
   @@index([status, province, city])
   @@index([categoryId])
@@ -266,6 +266,7 @@ model Order {
   orderCode      String    @unique @map("order_code") @db.VarChar(50)
   destinationId  String    @map("destination_id") @db.Uuid
   userId         String?   @map("user_id") @db.Uuid
+  discountId     String?   @map("discount_id") @db.Uuid // <--- Kolom foreign key diskon
   buyerName      String    @map("buyer_name") @db.VarChar(120)
   buyerEmail     String?   @map("buyer_email") @db.VarChar(254)
   buyerPhone     String?   @map("buyer_phone") @db.VarChar(20)
@@ -282,16 +283,18 @@ model Order {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user        User?       @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
-  createdBy   User?       @relation("OrderCreator", fields: [createdById], references: [id])
-  destination Destination @relation(fields: [destinationId], references: [id])
-  items       OrderItem[]
-  payments    Payment[]
-  tickets     Ticket[]
+  user         User?       @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy    User?       @relation("OrderCreator", fields: [createdById], references: [id])
+  destination  Destination @relation(fields: [destinationId], references: [id])
+  discount     Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull) // <--- Relasi ke Discount
+  items        OrderItem[]
+  payments     Payment[]
+  tickets      Ticket[]
 
   @@index([userId])
   @@index([destinationId])
   @@index([status])
+  @@index([discountId])
   @@map("orders")
 }
 
@@ -360,14 +363,14 @@ model Ticket {
 }
 
 model DestinationCapacityOverride {
-  id                String      @id @default(uuid(7)) @db.Uuid
-  destinationId     String      @map("destination_id") @db.Uuid
-  overrideDate      DateTime    @map("override_date") @db.Date
-  dailyVisitorLimit Int         @map("daily_visitor_limit")
+  id                String   @id @default(uuid(7)) @db.Uuid
+  destinationId     String   @map("destination_id") @db.Uuid
+  overrideDate      DateTime @map("override_date") @db.Date
+  dailyVisitorLimit Int      @map("daily_visitor_limit")
   reason            String?
 
-  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   destination       Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
 
@@ -403,6 +406,7 @@ model Discount {
   deletedAt         DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
   destination       Destination  @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  orders            Order[]      // <--- Relasi balik ke Order
 
   @@unique([destinationId, code])
   @@index([destinationId, isActive])
