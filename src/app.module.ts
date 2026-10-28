@@ -13,6 +13,7 @@ import { TicketInventoriesModule } from './modules/ticket-inventories/ticket-inv
 import { OrdersModule } from './modules/orders/orders.module';
 import { CapacityModule } from './modules/capacity/capacity.module';
 import { DiscountsModule } from './modules/discounts/discounts.module';
+import { NavigationsModule } from './modules/navigations/navigations.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { DiscountsModule } from './modules/discounts/discounts.module';
     TicketInventoriesModule,
     OrdersModule,
     DiscountsModule,
+    NavigationsModule,
   ],
   // 🔹 2. Tambahkan providers di bawah array imports
   providers: [
