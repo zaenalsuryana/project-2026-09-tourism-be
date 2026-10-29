@@ -7,11 +7,12 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { DestinationScopeGuard } from '../../common/guards/destination-scope.guard'; // 1. Import DestinationScopeGuard (sesuaikan path foldernya)
 
 @ApiTags('Capacity & Crowd Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('MANAGER')
+@UseGuards(JwtAuthGuard, RolesGuard, DestinationScopeGuard) // 2. Tambahkan DestinationScopeGuard di sini
+@Roles('MANAGER', 'SUPER_ADMIN') // 3. (Opsional) Sesuaikan role jika Super Admin juga boleh akses
 @Controller('manager')
 export class CapacityController {
   constructor(private readonly capacityService: CapacityService) {}

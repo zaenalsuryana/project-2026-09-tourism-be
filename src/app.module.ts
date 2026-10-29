@@ -21,8 +21,10 @@ import { NavigationsModule } from './modules/navigations/navigations.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     
-    // 🔹 1. Tambahkan konfigurasi batas request di sini
-    // (Maksimal 3 request per 10.000 milidetik / 10 detik)
+    // ==========================================================
+    // 🚦 RATE LIMITING CONFIGURATION (Global Security)
+    // Membatasi maksimal 3 request per 10 detik (10000ms) per IP
+    // ==========================================================
     ThrottlerModule.forRoot([{
       ttl: 10000, 
       limit: 3,
@@ -31,7 +33,6 @@ import { NavigationsModule } from './modules/navigations/navigations.module';
     AuthModule,
     CapacityModule,
     
-    // Konfigurasi MailerModule dengan Gmail
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -59,7 +60,10 @@ import { NavigationsModule } from './modules/navigations/navigations.module';
     DiscountsModule,
     NavigationsModule,
   ],
-  // 🔹 2. Tambahkan providers di bawah array imports
+
+  // ==========================================================
+  // 🛡️ GLOBAL GUARD: Menerapkan ThrottlerGuard secara global
+  // ==========================================================
   providers: [
     {
       provide: APP_GUARD,
