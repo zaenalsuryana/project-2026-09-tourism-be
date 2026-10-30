@@ -197,6 +197,7 @@ model Destination {
   dailyOccupancies       DestinationDailyOccupancy[]
   capacityOverrides      DestinationCapacityOverride[]
   discounts              Discount[]
+  transportInfo          DestinationTransport?     // <--- Relasi ke Transportasi Umum
 
   @@index([status, province, city])
   @@index([categoryId])
@@ -266,7 +267,7 @@ model Order {
   orderCode      String    @unique @map("order_code") @db.VarChar(50)
   destinationId  String    @map("destination_id") @db.Uuid
   userId         String?   @map("user_id") @db.Uuid
-  discountId     String?   @map("discount_id") @db.Uuid // <--- Kolom foreign key diskon
+  discountId     String?   @map("discount_id") @db.Uuid
   buyerName      String    @map("buyer_name") @db.VarChar(120)
   buyerEmail     String?   @map("buyer_email") @db.VarChar(254)
   buyerPhone     String?   @map("buyer_phone") @db.VarChar(20)
@@ -283,13 +284,13 @@ model Order {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user         User?       @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
-  createdBy    User?       @relation("OrderCreator", fields: [createdById], references: [id])
-  destination  Destination @relation(fields: [destinationId], references: [id])
-  discount     Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull) // <--- Relasi ke Discount
-  items        OrderItem[]
-  payments     Payment[]
-  tickets      Ticket[]
+  user        User?       @relation("OrderBuyer", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy   User?       @relation("OrderCreator", fields: [createdById], references: [id])
+  destination Destination @relation(fields: [destinationId], references: [id])
+  discount    Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  items       OrderItem[]
+  payments    Payment[]
+  tickets     Ticket[]
 
   @@index([userId])
   @@index([destinationId])
@@ -352,10 +353,10 @@ model Ticket {
   createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem   OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
   destination Destination @relation(fields: [destinationId], references: [id])
-  checkedInBy User?       @relation("StaffCheckIns", fields: [checkedInById], references: [id])
+  checkedInBy User?     @relation("StaffCheckIns", fields: [checkedInById], references: [id])
 
   @@index([orderId])
   @@index([destinationId, visitDate, status])
@@ -406,9 +407,26 @@ model Discount {
   deletedAt         DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
   destination       Destination  @relation(fields: [destinationId], references: [id], onDelete: Cascade)
-  orders            Order[]      // <--- Relasi balik ke Order
+  orders            Order[]
 
   @@unique([destinationId, code])
   @@index([destinationId, isActive])
   @@map("discounts")
+}
+
+// ===== Transportasi Umum Menuju Destinasi =====
+model DestinationTransport {
+  id                 String      @id @default(uuid(7)) @db.Uuid
+  destinationId      String      @unique @map("destination_id") @db.Uuid
+  destination        Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  publicTransitGuide String?     @map("public_transit_guide")
+  nearestStation     String?     @map("nearest_station") @db.VarChar(150)
+  estimatedTime      String?     @map("estimated_time") @db.VarChar(100)
+  tips               String?
+
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("destination_transports")
 }
