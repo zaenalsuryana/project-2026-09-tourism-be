@@ -11,9 +11,7 @@ import { Public } from '../../common/decorators/public.decorator';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // =========================================================================
-  // 1. PEMBELIAN TIKET ONLINE (PUBLIC / TOURIST)
-  // =========================================================================
+  // 📸 [SS 4 START] - FOTO 4: Endpoint Controller untuk Create Order & Webhook Midtrans
   @Post()
   @ApiOperation({
     summary:
@@ -41,9 +39,7 @@ export class OrdersController {
     return this.ordersService.create(createOrderDto, userId);
   }
 
-  // =========================================================================
   // 2. PENJUALAN TIKET LOKET / ONSITE (MANAGER / STAFF)
-  // =========================================================================
   @Post('staff/onsite-orders')
   @ApiOperation({
     summary: 'Penjualan tiket loket / onsite (Khusus Manager & Staff)',
@@ -63,9 +59,7 @@ export class OrdersController {
     );
   }
 
-  // =========================================================================
   // 3. DAFTAR PESANAN
-  // =========================================================================
   @Get()
   @ApiOperation({
     summary:
@@ -75,9 +69,7 @@ export class OrdersController {
     return this.ordersService.findAll(query);
   }
 
-  // =========================================================================
   // 4. WEBHOOK MIDTRANS
-  // =========================================================================
   @Public()
   @Post('midtrans-webhook')
   @HttpCode(HttpStatus.OK)
@@ -86,11 +78,10 @@ export class OrdersController {
   async handleMidtransWebhook(@Body() payload: MidtransNotificationDto) {
     return this.ordersService.processMidtransNotification(payload);
   }
+  // 📸 [SS 4 END] - Batas Akhir Screenshot 4 (Controller Endpoint)
 
-  // =========================================================================
   // 5. VALIDASI / SCAN TIKET PETUGAS (DILAKUKAN DENGAN METHOD GET)
-  // =========================================================================
-  @Get('validate-ticket/:orderCode') // 👈 2. Ubah dari @Post ke @Get dengan :orderCode
+  @Get('validate-ticket/:orderCode') 
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verifikasi / Scan QR Code Tiket oleh Petugas' })
   @ApiParam({
@@ -98,13 +89,11 @@ export class OrdersController {
     description: 'Kode Pesanan / Tiket',
     example: 'WST-261019-ZJS0LK',
   })
-  async validateTicket(@Param('orderCode') orderCode: string) { // 👈 3. Ambil dari @Param
+  async validateTicket(@Param('orderCode') orderCode: string) { 
     return this.ordersService.validateTicket(orderCode);
   }
 
-  // =========================================================================
   // 6. AMBIL E-TICKET (QR CODE BASE64)
-  // =========================================================================
   @Get(':id/ticket')
   @ApiOperation({
     summary:
@@ -114,18 +103,14 @@ export class OrdersController {
     return this.ordersService.getETicket(id);
   }
 
-  // =========================================================================
   // 7. DETAIL PESANAN
-  // =========================================================================
   @Get(':id')
   @ApiOperation({ summary: 'Melihat detail satu pesanan berdasarkan ID' })
   async findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
   }
 
-  // =========================================================================
   // 8. BATALKAN PESANAN
-  // =========================================================================
   @Post(':id/cancel')
   @ApiOperation({
     summary: 'Membatalkan pesanan dan mengembalikan kuota ticket',

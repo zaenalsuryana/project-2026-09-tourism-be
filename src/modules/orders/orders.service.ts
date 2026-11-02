@@ -1,11 +1,5 @@
 import * as QRCode from 'qrcode';
-import {
-  Injectable,
-  NotFoundException,
-  UnprocessableEntityException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException, BadRequestException, Logger } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOnsiteOrderDto } from './dto/create-onsite-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -186,7 +180,9 @@ export class OrdersService {
     const totalAmount = subtotal - discountValue;
     const orderCode = this.generateOrderCode();
 
-    // E. Transaksi Prisma Database
+    // =====================================================================
+    // 📸 [SS 1 START] - FOTO 1: Transaksi Atomik & Pengurangan Kuota Inventori
+    // =====================================================================
     try {
       const order = await this.prisma.$transaction(
         async (tx) => {
@@ -231,7 +227,7 @@ export class OrdersService {
               serviceFee: 0,
               totalAmount: totalAmount,
               expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-              discountId: appliedDiscountId, // <--- DISINI DISCOUNT ID DISIMPAN
+              discountId: appliedDiscountId,
               items: {
                 create: orderItemsData,
               },
@@ -243,8 +239,13 @@ export class OrdersService {
         },
         { timeout: 10000 },
       );
+    // =====================================================================
+    // 📸 [SS 1 END] - Batas Akhir Screenshot 1 (Atomic Transaction)
+    // =====================================================================
 
-      // F. Minta Link Pembayaran dari Midtrans
+      // ===================================================================
+      // 📸 [SS 2 START] - FOTO 2: Integrasi Midtrans (Create Transaction)
+      // ===================================================================
       const midtransParams = {
         transaction_details: {
           order_id: order.id,
@@ -270,6 +271,9 @@ export class OrdersService {
         paymentUrl: midtransTransaction.redirect_url,
         paymentToken: midtransTransaction.token,
       };
+      // ===================================================================
+      // 📸 [SS 2 END] - Batas Akhir Screenshot 2 (Midtrans Request)
+      // ===================================================================
     } catch (error) {
       if (error instanceof UnprocessableEntityException || error instanceof BadRequestException) {
         throw error;
@@ -316,7 +320,6 @@ export class OrdersService {
         let subtotal = 0;
         const orderItemsData = [];
 
-        // Update Kuota per Jenis Tiket
         for (const item of items) {
           const ticketDetail = ticketTypes.find((t) => t.id === item.ticketTypeId);
           const lineTotal = ticketDetail.price * item.quantity;
@@ -355,7 +358,6 @@ export class OrdersService {
           }
         }
 
-        // Simpan Order Berstatus PAID
         const orderCode = this.generateOrderCode();
         const order = await tx.order.create({
           data: {
@@ -378,7 +380,6 @@ export class OrdersService {
           include: { items: true },
         });
 
-        // Simpan Record Pembayaran
         await tx.payment.create({
           data: {
             orderId: order.id,
@@ -391,7 +392,6 @@ export class OrdersService {
           },
         });
 
-        // Terbitkan E-Ticket Langsung Per Pax
         const ticketRecords = [];
         for (const item of order.items) {
           for (let i = 0; i < item.quantity; i++) {
@@ -483,7 +483,9 @@ export class OrdersService {
       signature_key: signatureKey,
     } = payload;
 
-    // Verifikasi Signature Key
+    // =====================================================================
+    // 📸 [SS 3 START] - FOTO 3: Verifikasi Signature Webhook Midtrans (Kriptografi)
+    // =====================================================================
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     const expectedSignature = crypto
       .createHash('sha512')
@@ -495,6 +497,9 @@ export class OrdersService {
     if (!isBypass && signatureKey !== expectedSignature) {
       throw new BadRequestException('Signature key dari Midtrans tidak valid.');
     }
+    // =====================================================================
+    // 📸 [SS 3 END] - Batas Akhir Screenshot 3 (Signature Verification)
+    // =====================================================================
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -523,7 +528,6 @@ export class OrdersService {
       transactionStatus === 'settlement' ||
       (transactionStatus === 'capture' && fraudStatus === 'accept')
     ) {
-      // Ketika pembayaran sukses (PAID), update status & increment usedCount kuota diskon jika ada
       await this.prisma.$transaction(async (tx) => {
         const targetOrder = await tx.order.findUnique({
           where: { id: orderId },
@@ -534,7 +538,6 @@ export class OrdersService {
           data: { status: 'PAID' },
         });
 
-        // Jika order ini menggunakan diskon, increment usedCount pada diskon tersebut
         if (targetOrder && targetOrder.discountId) {
           await tx.discount.update({
             where: { id: targetOrder.discountId },
@@ -547,11 +550,16 @@ export class OrdersService {
         }
       });
 
+      this.logger.log(`[MIDTRANS WEBHOOK] Pembayaran Berhasil! Order ID ${orderId} status diubah menjadi PAID.`);
+
       return { message: 'Pembayaran berhasil dikonfirmasi via Midtrans dan kuota diskon diperbarui.' };
     } else if (
       ['cancel', 'expire', 'deny'].includes(transactionStatus)
     ) {
       await this.cancelOrder(orderId);
+
+      this.logger.log(`[MIDTRANS WEBHOOK] Pembayaran gagal/expired untuk Order ID ${orderId}. Pesanan dibatalkan.`);
+
       return {
         message: 'Pembayaran gagal/kedaluwarsa. Pesanan dibatalkan otomatis.',
       };
@@ -689,7 +697,6 @@ export class OrdersService {
       );
     }
 
-    // Generasi Gambar QR Code dalam format String Base64
     const qrCodeUrl = await QRCode.toDataURL(order.orderCode);
 
     return {
