@@ -180,9 +180,7 @@ export class OrdersService {
     const totalAmount = subtotal - discountValue;
     const orderCode = this.generateOrderCode();
 
-    // =====================================================================
-    // 📸 [SS 1 START] - FOTO 1: Transaksi Atomik & Pengurangan Kuota Inventori
-    // =====================================================================
+ 
     try {
       const order = await this.prisma.$transaction(
         async (tx) => {
@@ -239,13 +237,8 @@ export class OrdersService {
         },
         { timeout: 10000 },
       );
-    // =====================================================================
-    // 📸 [SS 1 END] - Batas Akhir Screenshot 1 (Atomic Transaction)
-    // =====================================================================
 
-      // ===================================================================
-      // 📸 [SS 2 START] - FOTO 2: Integrasi Midtrans (Create Transaction)
-      // ===================================================================
+
       const midtransParams = {
         transaction_details: {
           order_id: order.id,
@@ -271,9 +264,7 @@ export class OrdersService {
         paymentUrl: midtransTransaction.redirect_url,
         paymentToken: midtransTransaction.token,
       };
-      // ===================================================================
-      // 📸 [SS 2 END] - Batas Akhir Screenshot 2 (Midtrans Request)
-      // ===================================================================
+
     } catch (error) {
       if (error instanceof UnprocessableEntityException || error instanceof BadRequestException) {
         throw error;
@@ -497,9 +488,7 @@ export class OrdersService {
     if (!isBypass && signatureKey !== expectedSignature) {
       throw new BadRequestException('Signature key dari Midtrans tidak valid.');
     }
-    // =====================================================================
-    // 📸 [SS 3 END] - Batas Akhir Screenshot 3 (Signature Verification)
-    // =====================================================================
+
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },

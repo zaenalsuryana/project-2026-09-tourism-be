@@ -15,6 +15,7 @@ import { CapacityModule } from './modules/capacity/capacity.module';
 import { DiscountsModule } from './modules/discounts/discounts.module';
 import { NavigationsModule } from './modules/navigations/navigations.module';
 import { DestinationTransportsModule } from './modules/destination-transports/destination-transports.module';
+import { MeModule } from './modules/me/me.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { DestinationTransportsModule } from './modules/destination-transports/de
     DiscountsModule,
     NavigationsModule,
     DestinationTransportsModule,
+    MeModule,
   ],
 
   // ==========================================================

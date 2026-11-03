@@ -11,7 +11,7 @@ import { Public } from '../../common/decorators/public.decorator';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // 📸 [SS 4 START] - FOTO 4: Endpoint Controller untuk Create Order & Webhook Midtrans
+ 
   @Post()
   @ApiOperation({
     summary:
@@ -78,7 +78,7 @@ export class OrdersController {
   async handleMidtransWebhook(@Body() payload: MidtransNotificationDto) {
     return this.ordersService.processMidtransNotification(payload);
   }
-  // 📸 [SS 4 END] - Batas Akhir Screenshot 4 (Controller Endpoint)
+ 
 
   // 5. VALIDASI / SCAN TIKET PETUGAS (DILAKUKAN DENGAN METHOD GET)
   @Get('validate-ticket/:orderCode') 
