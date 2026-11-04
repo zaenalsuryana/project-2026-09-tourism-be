@@ -1,52 +1,71 @@
 import { Controller, Get, Patch, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger'; // <--- Tambahkan ApiOperation
 import { MeService } from './me.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AddWishlistDto } from './dto/wishlist.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetCurrentUser } from '../../common/decorators/get-current-user.decorator';
 
+@ApiTags('Me')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('me')
 export class MeController {
   constructor(private readonly meService: MeService) {}
 
   @Get()
-  getProfile(@GetCurrentUser('sub') userId: string) {
+  @ApiOperation({ summary: 'Melihat profil akun pengguna yang sedang login' })
+  getProfile(@GetCurrentUser() user: any) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.getProfile(userId);
   }
 
   @Patch()
-  updateProfile(@GetCurrentUser('sub') userId: string, @Body() dto: UpdateProfileDto) {
+  @ApiOperation({ summary: 'Memperbarui data profil pengguna' })
+  updateProfile(@GetCurrentUser() user: any, @Body() dto: UpdateProfileDto) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.updateProfile(userId, dto);
   }
 
   @Get('identities')
-  getIdentities(@GetCurrentUser('sub') userId: string) {
+  @ApiOperation({ summary: 'Melihat daftar identitas login OAuth yang terhubung' })
+  getIdentities(@GetCurrentUser() user: any) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.getIdentities(userId);
   }
 
   @Delete('identities/:provider')
-  removeIdentity(@GetCurrentUser('sub') userId: string, @Param('provider') provider: string) {
+  @ApiOperation({ summary: 'Menghapus/melepas tautan identitas login OAuth tertentu' })
+  removeIdentity(@GetCurrentUser() user: any, @Param('provider') provider: string) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.removeIdentity(userId, provider.toUpperCase());
   }
 
   @Get('wishlist')
-  getWishlists(@GetCurrentUser('sub') userId: string) {
+  @ApiOperation({ summary: 'Melihat daftar destinasi wisata favorit (wishlist)' })
+  getWishlists(@GetCurrentUser() user: any) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.getWishlists(userId);
   }
 
   @Post('wishlist')
-  addWishlist(@GetCurrentUser('sub') userId: string, @Body() dto: AddWishlistDto) {
+  @ApiOperation({ summary: 'Menambahkan destinasi wisata ke daftar wishlist' })
+  addWishlist(@GetCurrentUser() user: any, @Body() dto: AddWishlistDto) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.addWishlist(userId, dto.destinationId);
   }
 
   @Delete('wishlist/:destinationId')
-  removeWishlist(@GetCurrentUser('sub') userId: string, @Param('destinationId') destinationId: string) {
+  @ApiOperation({ summary: 'Menghapus destinasi dari daftar wishlist' })
+  removeWishlist(@GetCurrentUser() user: any, @Param('destinationId') destinationId: string) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.removeWishlist(userId, destinationId);
   }
 
   @Get('orders')
-  getMyOrders(@GetCurrentUser('sub') userId: string) {
+  @ApiOperation({ summary: 'Melihat riwayat pemesanan tiket wisata pengguna' })
+  getMyOrders(@GetCurrentUser() user: any) {
+    const userId = user?.id || user?.sub || user?.userId;
     return this.meService.getMyOrders(userId);
   }
 }

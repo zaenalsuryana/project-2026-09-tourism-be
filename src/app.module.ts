@@ -16,6 +16,7 @@ import { DiscountsModule } from './modules/discounts/discounts.module';
 import { NavigationsModule } from './modules/navigations/navigations.module';
 import { DestinationTransportsModule } from './modules/destination-transports/destination-transports.module';
 import { MeModule } from './modules/me/me.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { MeModule } from './modules/me/me.module';
     NavigationsModule,
     DestinationTransportsModule,
     MeModule,
+    AdminModule,
   ],
 
   // ==========================================================
